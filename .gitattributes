@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Verbatim licence texts and third-party source archives: never normalise line endings or treat as text,
+# so their SHA-256 values (recorded in packaging/licenses/manifest.json and packaging/third_party.py) stay valid.
+packaging/licenses/* -text
+packaging/third-party-sources/*.zst binary
+packaging/third-party-sources/*.sig binary
+packaging/third-party-sources/README.txt -text

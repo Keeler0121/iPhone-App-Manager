@@ -1,0 +1,112 @@
+{
+  "ideviceinstaller-1.1.1-AUTHORS.txt": {
+    "origin": "upstream ideviceinstaller-1.1.1.tar.gz inside mingw-w64-ideviceinstaller-1.1.1-2.src.tar.zst: AUTHORS",
+    "sha256": "2a68b2b5ed27b47c101c754b84addbb478afc2e8362e732ab164f7846323b55b",
+    "size": 58
+  },
+  "ideviceinstaller-1.1.1-COPYING.txt": {
+    "origin": "upstream ideviceinstaller-1.1.1.tar.gz inside mingw-w64-ideviceinstaller-1.1.1-2.src.tar.zst: COPYING (GNU GPL v2)",
+    "sha256": "7619c753cac95d4740220223bde48a032606fcaccde5e546f9bc444c81ab356d",
+    "size": 17988
+  },
+  "innosetup-6.7.3-license.txt": {
+    "origin": "Inno Setup 6.7.3 installation: license.txt (identical to https://jrsoftware.org/files/is/license.txt)",
+    "sha256": "2e5346868c2a18434489824e11d65c3031620f792fefc415d05f19cd441abf5c",
+    "size": 1521
+  },
+  "libimobiledevice-1.3.0-AUTHORS.txt": {
+    "origin": "upstream libimobiledevice-1.3.0.tar.gz inside mingw-w64-libimobiledevice-1.3.0-18.src.tar.zst: AUTHORS",
+    "sha256": "4920ad8427644a779b6d12a51121d69cdb609f26fdfff322c22efa5de7ffb584",
+    "size": 294
+  },
+  "libimobiledevice-1.3.0-COPYING.LESSER.txt": {
+    "origin": "upstream libimobiledevice-1.3.0.tar.gz inside mingw-w64-libimobiledevice-1.3.0-18.src.tar.zst: COPYING.LESSER (GNU LGPL v2.1)",
+    "sha256": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c",
+    "size": 26434
+  },
+  "libimobiledevice-glue-1.3.2-COPYING.txt": {
+    "origin": "upstream libimobiledevice-glue-1.3.2.tar.bz2 inside mingw-w64-libimobiledevice-glue-1.3.2-1.src.tar.zst: COPYING (GNU LGPL v2.1)",
+    "sha256": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c",
+    "size": 26434
+  },
+  "libimobiledevice-glue-1.3.2-LibTomCrypt-notice.txt": {
+    "origin": "upstream libimobiledevice-glue-1.3.2.tar.bz2 inside mingw-w64-libimobiledevice-glue-1.3.2-1.src.tar.zst: headers of src/sha1.c, sha256.c, sha512.c (LibTomCrypt)",
+    "sha256": "ccd17146b2e6fbfb28f85dab6879f6dac6939d952c43e676ae4fe6bc886883ef",
+    "size": 739
+  },
+  "libplist-2.7.0-AUTHORS.txt": {
+    "origin": "upstream libplist-2.7.0.tar.bz2 inside mingw-w64-libplist-2.7.0-4.src.tar.zst: AUTHORS",
+    "sha256": "9ee5828311bc47160791e9fc1574cb356d9d6a661b1d194a97cd254d58c9d3b9",
+    "size": 395
+  },
+  "libplist-2.7.0-COPYING-GPLv2.txt": {
+    "origin": "upstream libplist-2.7.0.tar.bz2 inside mingw-w64-libplist-2.7.0-4.src.tar.zst: COPYING (GNU GPL v2 text at the upstream root; see THIRD-PARTY-NOTICES.txt for the open question)",
+    "sha256": "7619c753cac95d4740220223bde48a032606fcaccde5e546f9bc444c81ab356d",
+    "size": 17988
+  },
+  "libplist-2.7.0-COPYING.LESSER.txt": {
+    "origin": "upstream libplist-2.7.0.tar.bz2 inside mingw-w64-libplist-2.7.0-4.src.tar.zst: COPYING.LESSER (GNU LGPL v2.1); identical to libcnary/COPYING",
+    "sha256": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c",
+    "size": 26434
+  },
+  "libplist-2.7.0-MIT-jsmn.txt": {
+    "origin": "upstream libplist-2.7.0.tar.bz2 inside mingw-w64-libplist-2.7.0-4.src.tar.zst: licence header of src/jsmn.h (also src/jsmn.c)",
+    "sha256": "f3112086e9af226992976f398bedbdbfd263d71e82d3b6cb7ad84e81f393e8b5",
+    "size": 1170
+  },
+  "libplist-2.7.0-MIT-time64.txt": {
+    "origin": "upstream libplist-2.7.0.tar.bz2 inside mingw-w64-libplist-2.7.0-4.src.tar.zst: licence header of src/time64.c",
+    "sha256": "9c375ff7273f8ca00f35d88681a19bf2c1ff7f55c78030eac91b9509f2c49718",
+    "size": 1165
+  },
+  "libusbmuxd-2.1.1-AUTHORS.txt": {
+    "origin": "upstream libusbmuxd-2.1.1.tar.bz2 inside mingw-w64-libusbmuxd-2.1.1-1.src.tar.zst: AUTHORS",
+    "sha256": "f76632e73560fb36850d2d70cf72960240a82d8c527022a4165370f8a81fa9fc",
+    "size": 140
+  },
+  "libusbmuxd-2.1.1-COPYING.txt": {
+    "origin": "upstream libusbmuxd-2.1.1.tar.bz2 inside mingw-w64-libusbmuxd-2.1.1-1.src.tar.zst: COPYING (GNU LGPL v2.1)",
+    "sha256": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c",
+    "size": 26434
+  },
+  "pyinstaller-6.22.3-COPYING.txt": {
+    "origin": "pyinstaller-6.22.3.dist-info/licenses/COPYING.txt in the build environment",
+    "sha256": "0598064c7d2718e38d7914a7d08343b2fa008e3bea9ebba2aa7a6ffa5900dd64",
+    "size": 32604
+  },
+  "python-3.12.10-LICENSE.txt": {
+    "origin": "python.org Python 3.12.10 installation: LICENSE.txt",
+    "sha256": "e502c6b880ff58d614901495a9009c136539cd0b1e2a2abb8fc00b934c203419",
+    "size": 36874
+  },
+  "python-expat-2.7.1-COPYING.txt": {
+    "origin": "https://raw.githubusercontent.com/libexpat/libexpat/R_2_7_1/expat/COPYING (tag R_2_7_1; pyexpat reports expat_2.7.1)",
+    "sha256": "31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87",
+    "size": 1144
+  },
+  "python-libffi-3.4.4-LICENSE.txt": {
+    "origin": "https://raw.githubusercontent.com/libffi/libffi/v3.4.4/LICENSE (tag v3.4.4; CPython v3.12.10 PCbuild/get_externals.bat names libffi-3.4.4)",
+    "sha256": "2c9c2acb9743e6b007b91350475308aee44691d96aa20eacef8e199988c8c388",
+    "size": 1132
+  },
+  "python-libmpdec-2.5.1-LICENSE.txt": {
+    "origin": "https://raw.githubusercontent.com/python/cpython/v3.12.10/Doc/license.rst, section 'libmpdec' (libmpdec 2.5.1 reported by _decimal)",
+    "sha256": "669512af7219f58be03a398766d7c9da11a3b3df9d3f05cb74c5ceca25c8da3b",
+    "size": 1284
+  },
+  "python-openssl-3.0.16-LICENSE.txt": {
+    "origin": "https://raw.githubusercontent.com/openssl/openssl/openssl-3.0.16/LICENSE.txt (tag openssl-3.0.16; no NOTICE file at that tag)",
+    "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+    "size": 10175
+  },
+  "python-zlib-1.3.1-LICENSE.txt": {
+    "origin": "https://raw.githubusercontent.com/madler/zlib/v1.3.1/LICENSE (tag v1.3.1)",
+    "sha256": "845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243",
+    "size": 1002
+  },
+  "tcltk-8.6.15-license.terms.txt": {
+    "origin": "python.org Python 3.12.10 installation: tcl/tk8.6/license.terms (Tcl/Tk 8.6.15)",
+    "sha256": "0d1e4405f6273f091732764ed89b57066be63ce64869be6c71ea337dc4f2f9b5",
+    "size": 2307
+  }
+}

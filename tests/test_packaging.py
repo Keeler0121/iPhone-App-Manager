@@ -70,7 +70,8 @@ class BuildScriptTests(unittest.TestCase):
         cls.build = load_build_script()
 
     def test_every_bundled_file_has_a_licence_entry(self):
-        provided = [f for c in self.build.COMPONENTS for f in c[4]]
+        import third_party
+        provided = list(third_party.MSYS2_FIVE_FILES) + [f for entry in third_party.MSYS2_OTHER for f in entry[5]]
         self.assertEqual(sorted(provided), sorted(self.build.TOOLS + self.build.DLLS))
 
     @unittest.skipUnless(config.MSYS2_BIN.is_dir(), "MSYS2 not installed")
@@ -102,10 +103,17 @@ class BuiltReleaseTests(unittest.TestCase):
         tools = APP_DIR / config.BUNDLED_TOOLS_SUBDIR
         for name in self.build.TOOLS + self.build.DLLS:
             self.assertTrue((tools / name).is_file(), name)
-        for name in ("THIRD-PARTY-NOTICES.txt", "python-LICENSE.txt", "tcltk-license.terms.txt",
+        licenses = APP_DIR / "licenses"
+        if (licenses / "python-3.12.10-LICENSE.txt").is_file():              # built with the corrected notices
+            names = ("THIRD-PARTY-NOTICES.txt", "python-3.12.10-LICENSE.txt", "tcltk-8.6.15-license.terms.txt",
+                     "ideviceinstaller-1.1.1-COPYING.txt", "libimobiledevice-1.3.0-COPYING.LESSER.txt",
+                     "openssl-LICENSE.txt")
+        else:                                                              # release built before that change
+            names = ("THIRD-PARTY-NOTICES.txt", "python-LICENSE.txt", "tcltk-license.terms.txt",
                      "ideviceinstaller-COPYING.GPLv2.txt", "libimobiledevice-COPYING.LGPLv2.1.txt",
-                     "openssl-LICENSE.txt"):
-            self.assertTrue((APP_DIR / "licenses" / name).is_file(), name)
+                     "openssl-LICENSE.txt")
+        for name in names:
+            self.assertTrue((licenses / name).is_file(), name)
         self.assertTrue((APP_DIR / "README.txt").is_file())
         self.assertTrue((APP_DIR / "_internal").is_dir())
 

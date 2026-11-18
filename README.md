@@ -67,17 +67,27 @@ The device name and app identifiers in these images have been replaced with neut
 
 ## System requirements
 
-- Windows 10 or 11, 64-bit.
+- Windows 10 or 11, 64-bit. (The program has been tested on Windows 11; see [Known limitations](#known-limitations).)
+- The **Microsoft Visual C++ Redistributable for Visual Studio 2015-2022 (x64)**, version **14.43.34808 or newer**. It is **not included** with iPhone App Manager. See [Microsoft Visual C++ Redistributable](#microsoft-visual-c-redistributable-x64) below.
 - Apple's **Apple Devices** app from the Microsoft Store. It provides the USB driver and service that let Windows talk to an iPhone.
 - An iPhone with a USB cable.
 
 You do **not** need Python or any developer tools to use the installer or portable version.
 
+### Microsoft Visual C++ Redistributable (x64)
+
+iPhone App Manager needs Microsoft's Visual C++ Redistributable (x64), which is **not included** in the installer or the portable ZIP. Many PCs already have it, because other programs install it. If it is missing or too old:
+
+- The installer tells you and lets you choose whether to continue, but the program **will not start** until the redistributable is installed.
+- The portable version has no such check. If the program does not start and shows **"Failed to load Python DLL"**, the redistributable is probably missing.
+
+Download the latest **x64** version from Microsoft's official page: <https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist>. Installing it normally needs **administrator rights**. A newer version is fine, and it replaces an older one.
+
 ## Installation
 
-1. Install **Apple Devices** from the Microsoft Store if you do not already have it.
+1. Install the **Microsoft Visual C++ Redistributable (x64)** (see above) and **Apple Devices** from the Microsoft Store if you do not already have them.
 2. Download `iPhone App Manager Setup 1.0.0.exe` from the project's **Releases** page.
-3. Run it. It installs just for you (no administrator prompt) into `%LOCALAPPDATA%\Programs\iPhone App Manager`, adds a Start Menu entry, and optionally a Desktop shortcut.
+3. Run it. It installs just for you (no administrator prompt) into `%LOCALAPPDATA%\Programs\iPhone App Manager`, adds a Start Menu entry, and optionally a Desktop shortcut. If the Visual C++ Redistributable is missing or too old, it warns you first.
 4. Start **iPhone App Manager** from the Start Menu.
 
 ## Connecting your iPhone
@@ -138,6 +148,7 @@ Installed and offloaded apps appear together in **one list**. Each row shows the
 
 | What you see | What to do |
 |---|---|
+| **The program does not start** and shows "Failed to load Python DLL" | Install the latest x64 [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) (it may need administrator rights), then start the program again. |
 | **No iPhone connected** | Connect the iPhone with a USB cable, unlock it, then click **Refresh**. If it is already plugged in, check that the Apple Devices app can see it. |
 | **iPhone doesn't trust this computer** | Unlock the iPhone. When "Trust This Computer?" appears, tap **Trust** and enter your passcode, then click **Refresh**. |
 | **iPhone is locked** | Unlock the iPhone with your passcode, then click **Refresh**. |
@@ -157,7 +168,7 @@ Apple Devices is separate software and is removed separately if you no longer wa
 
 The portable version runs without being installed. It will be offered as a ZIP file on the project's **Releases** page once it is published.
 
-1. Install the **Apple Devices** app from the Microsoft Store if you have not already. Apple Devices and its USB drivers are **required** for the portable version too.
+1. Install the **Apple Devices** app from the Microsoft Store if you have not already. Apple Devices and its USB drivers are **required** for the portable version too. Also make sure the **Microsoft Visual C++ Redistributable (x64)** is installed (see [above](#microsoft-visual-c-redistributable-x64)); the portable version does not check for it.
 2. Download the portable ZIP.
 3. Right-click the ZIP and choose **Extract All…**, then pick a folder (for example, one inside your Documents). Don't run the program from inside the ZIP.
 4. Open the extracted `iPhone App Manager` folder and double-click `iPhone App Manager.exe`. Keep the whole folder together: the `_internal` and `tools` folders are required.
@@ -168,7 +179,8 @@ Python and MSYS2 are **not** needed to run the packaged application. To remove t
 ## Known limitations
 
 - Windows only. Not tested on other operating systems.
-- Needs the Apple Devices app (or an equivalent Apple USB driver) to be installed.
+- Tested on Windows 11. **Windows 10 has not been tested.**
+- Needs the Microsoft Visual C++ Redistributable (x64), which is not included, and the Apple Devices app (or an equivalent Apple USB driver) to be installed.
 - Designed and tested for USB connections only. Wi-Fi sync connections have not been tested.
 - Designed for a single connected iPhone; using several at once has not been tested.
 - Apple's built-in apps cannot be removed with this tool.
@@ -206,7 +218,7 @@ py -3.12 -m venv .venv-build
 .venv-build\Scripts\python.exe packaging\build.py
 ```
 
-Add `--installer` to also build the installer (requires Inno Setup 6), or `--installer-only` to wrap an existing portable folder. `packaging\build.py` generates the icon, runs PyInstaller, copies the libimobiledevice tools and DLLs into `tools\libimobiledevice`, and writes licence notices to `licenses\`. Built files go to `dist\` and are not committed.
+Add `--installer` to also build the installer (requires Inno Setup 6), or `--installer-only` to wrap an existing portable folder. `packaging\build.py` generates the icon, runs PyInstaller (from `packaging\iphone_app_manager.spec`, in a cleaned environment) and leaves Microsoft's runtime files out of the release (the app-local UCRT and `VCRUNTIME140.dll`; see `packaging\runtime_policy.py`) because the app relies on Windows' own UCRT and on the separately installed Visual C++ Redistributable, copies the libimobiledevice tools and DLLs into `tools\libimobiledevice`, and writes licence notices to `licenses\`. Built files go to `dist\` and are not committed.
 
 ### Project layout
 
@@ -228,20 +240,18 @@ tests/                          unit, UI (fake device) and packaging tests
 
 The licence for iPhone App Manager's own source code has **not been chosen yet**. Until a licence file is added, all rights are reserved by the author.
 
-The Windows release bundles unmodified third-party programs and libraries, each under its own licence (full texts are included in the release's `licenses` folder, along with `THIRD-PARTY-NOTICES.txt`):
+The Windows release bundles third-party programs and libraries, each under its own licence. The release's `licenses` folder contains `THIRD-PARTY-NOTICES.txt` (the notices, with versions, copyright holders and sources) and the licence texts it names. The notices are the author's own audit, have not been reviewed by a lawyer, and are not a statement that every obligation has been met. In summary:
 
-| Component | Licence |
+| Component | Licence (see `THIRD-PARTY-NOTICES.txt` for details) |
 |---|---|
-| Python and Tcl/Tk (runtime) | Python Software Foundation licence; Tcl/Tk licence |
-| PyInstaller (bootloader) | GPL-2.0 with the PyInstaller bootloader exception |
-| ideviceinstaller | GPL-2.0-or-later |
-| libimobiledevice, libplist | LGPL-2.1-or-later (some tools GPL-2.0-or-later) |
-| libimobiledevice-glue, libusbmuxd | LGPL-2.1-or-later |
-| OpenSSL | Apache-2.0 |
-| libzip, zstd | BSD-3-Clause (zstd: BSD-3-Clause OR GPL-2.0-only) |
-| zlib | Zlib |
-| bzip2 | bzip2-1.0.6 |
-| xz (liblzma) | 0BSD |
-| Inno Setup (installer builder only; not bundled in the app) | Inno Setup licence |
+| ideviceinstaller 1.1.1 | GPL-2.0-or-later |
+| libimobiledevice 1.3.0 (library and `ideviceinfo`), libimobiledevice-glue 1.3.2, libusbmuxd 2.1.1 | LGPL-2.1-or-later (glue also contains LibTomCrypt code under its own terms) |
+| libplist 2.7.0 | Mainly LGPL-2.1-or-later, with MIT-licensed parts. MSYS2 also lists GPL-2.0-or-later; that discrepancy is **not resolved** and the notices keep the qualification. |
+| OpenSSL 4.1.0 (MSYS2), libzip, zlib 1.4, bzip2, xz (liblzma), zstd | Apache-2.0; BSD-3-Clause; Zlib; bzip2 licence; 0BSD; BSD-3-Clause or GPL (dual) |
+| Python 3.12.10 runtime and its components (OpenSSL 3.0.16, Tcl/Tk 8.6.15, libffi 3.4.4, Expat 2.7.1, zlib 1.3.1, libmpdec 2.5.1) | PSF licence; Apache-2.0; Tcl/Tk licence; MIT; MIT; Zlib; BSD-2-Clause |
+| PyInstaller 6.22.3 | GPL-2.0-or-later with the PyInstaller bootloader exception; Apache-2.0 for the embedded run-time hooks |
+| Inno Setup 6.7.3 (installer only) | Inno Setup licence |
 
-Source for these components is available from their upstream projects and from MSYS2 package sources (https://packages.msys2.org/).
+The Microsoft Visual C++ Redistributable (x64) is **not** bundled; it is installed separately and is under Microsoft's own terms.
+
+**Source code.** The MSYS2 source packages for the five components ideviceinstaller, libimobiledevice, libimobiledevice-glue, libusbmuxd and libplist are provided as a separate download with each release (`Third-Party-Source-Code-1.0.0.zip`, built by `packaginguild.py` from `packaging	hird-party-sources`). It covers only those five packages. Sources for the other components are available from their upstream projects.

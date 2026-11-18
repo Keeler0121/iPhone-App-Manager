@@ -4,23 +4,36 @@ Run with the build environment (PyInstaller is installed only there):
     .venv-build\\Scripts\\python.exe packaging\\build.py                  portable folder only
     .venv-build\\Scripts\\python.exe packaging\\build.py --installer      portable folder + installer
     .venv-build\\Scripts\\python.exe packaging\\build.py --installer-only installer from existing folder
+    .venv-build\\Scripts\\python.exe packaging\\build.py --source-bundle-only  only the source bundle
 The installer (Inno Setup 6) is written to  dist\\installer\\iPhone App Manager Setup <version>.exe
+The third-party source bundle is written to  dist\\release\\Third-Party-Source-Code-<version>.zip (+ .sha256)
 
 Steps
   1. Draw the app's orange tile icon into packaging\\app.ico (same artwork as the window icon).
-  2. Run PyInstaller (one-folder build, no console window, Windows version information).
+  2. Run PyInstaller from packaging\\iphone_app_manager.spec (one-folder build, no console window, Windows
+     version information) in a cleaned environment (PATH reduced to the Python install and Windows, so no
+     unrelated runtime files such as a JDK's can be collected). The spec leaves out Microsoft's runtime files
+     (app-local UCRT and VCRUNTIME140.dll; see packaging\\runtime_policy.py) and the build then verifies none of
+     them is present.
   3. Copy the libimobiledevice tools and every DLL they need into tools\\libimobiledevice,
      verifying the dependency list with MSYS2's ldd so nothing is missed.
-  4. Write licence notices for everything bundled, plus a short README.txt.
+  4. Write the licence notices (THIRD-PARTY-NOTICES.txt generated from packaging\\third_party.py plus the
+     verbatim texts in packaging\\licenses), plus a short README.txt.
+  5. Create the separate Third-Party-Source-Code zip from packaging\\third-party-sources (hash-verified).
 The source project is never modified (build output goes to build\\ and dist\\ only).
+
+The release needs Microsoft's Visual C++ Redistributable (x64) on the user's PC; it is NOT bundled.
 """
 from __future__ import annotations
 
+import contextlib
+import json
+import os
 import shutil
 import struct
 import subprocess
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,9 +41,13 @@ PACKAGING = ROOT / "packaging"
 DIST = ROOT / "dist"
 APP_NAME = "iPhone App Manager"
 APP_DIR = DIST / APP_NAME
+SPEC_FILE = PACKAGING / "iphone_app_manager.spec"
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(PACKAGING))
 
 from iphone_app_manager import config  # noqa: E402
+import runtime_policy  # noqa: E402
+import third_party  # noqa: E402
 
 MSYS2_ROOT = Path(r"C:\msys64")
 MSYS2_BIN = config.MSYS2_BIN
@@ -45,27 +62,8 @@ DLLS = ["libimobiledevice-1.0.dll", "libimobiledevice-glue-1.0.dll", "libplist-2
         "libssl-4-x64.dll", "libcrypto-4-x64.dll", "libzip.dll", "zlib1.dll", "libbz2-1.dll", "liblzma-5.dll",
         "libzstd.dll"]
 
-# (MSYS2 package, licence, licence files, source URL, files it provides)
-COMPONENTS = [
-    ("ideviceinstaller", "GPL-2.0-or-later", ["xz/COPYING.GPLv2"],
-     "https://github.com/libimobiledevice/ideviceinstaller", ["ideviceinstaller.exe"]),
-    ("libimobiledevice", "LGPL-2.1-or-later (ideviceinfo: GPL-2.0-or-later)",
-     ["xz/COPYING.LGPLv2.1", "xz/COPYING.GPLv2"],
-     "https://github.com/libimobiledevice/libimobiledevice", ["libimobiledevice-1.0.dll", "ideviceinfo.exe"]),
-    ("libimobiledevice-glue", "LGPL-2.1-or-later", ["xz/COPYING.LGPLv2.1"],
-     "https://github.com/libimobiledevice/libimobiledevice-glue", ["libimobiledevice-glue-1.0.dll"]),
-    ("libusbmuxd", "LGPL-2.1-or-later", ["xz/COPYING.LGPLv2.1"],
-     "https://github.com/libimobiledevice/libusbmuxd", ["libusbmuxd-2.0.dll"]),
-    ("libplist", "GPL-2.0-or-later AND LGPL-2.1-or-later", ["xz/COPYING.LGPLv2.1", "xz/COPYING.GPLv2"],
-     "https://github.com/libimobiledevice/libplist", ["libplist-2.0.dll"]),
-    ("openssl", "Apache-2.0", ["openssl/LICENSE"], "https://www.openssl.org/source/",
-     ["libssl-4-x64.dll", "libcrypto-4-x64.dll"]),
-    ("libzip", "BSD-3-Clause", ["libzip/LICENSE"], "https://libzip.org/", ["libzip.dll"]),
-    ("zlib", "Zlib", ["zlib/LICENSE"], "https://zlib.net/", ["zlib1.dll"]),
-    ("bzip2", "bzip2-1.0.6", ["bzip2/LICENSE"], "https://sourceware.org/bzip2/", ["libbz2-1.dll"]),
-    ("xz", "0BSD (liblzma)", ["xz/COPYING", "xz/COPYING.0BSD"], "https://tukaani.org/xz/", ["liblzma-5.dll"]),
-    ("zstd", "BSD-3-Clause OR GPL-2.0-only", ["zstd/LICENSE"], "https://github.com/facebook/zstd", ["libzstd.dll"]),
-]
+# The licence data (versions, licences, notices text, source bundle) lives in packaging/third_party.py and the
+# verbatim licence texts in packaging/licenses/. Files provided by each MSYS2 package are listed there.
 
 
 def step(msg: str) -> None:
@@ -138,6 +136,21 @@ def copy_tools(dest: Path) -> None:
     for f in TOOLS + DLLS:
         shutil.copy2(MSYS2_BIN / f, dest / f)
     print(f"copied {len(TOOLS)} tools + {len(DLLS)} DLLs to {dest.relative_to(ROOT)}")
+    verify_bundled_tools(dest)
+
+
+def sha256_of(path: Path) -> str:
+    import hashlib
+    return hashlib.sha256(path.read_bytes()).hexdigest().upper()
+
+
+def verify_bundled_tools(dest: Path) -> None:
+    """The notices describe exact MSYS2 package versions, so the copied files must be those exact files."""
+    wrong = [f for f in TOOLS + DLLS if sha256_of(dest / f) != third_party.PINNED_TOOL_SHA256.get(f)]
+    if wrong:
+        sys.exit(f"Bundled tool files differ from the versions documented in the licence notices: {wrong}. "
+                 "Update packaging/third_party.py (versions, licences, hashes) and the source bundle before building.")
+    print(f"tool check: all {len(TOOLS + DLLS)} bundled files match the documented MSYS2 package versions")
 
 
 # ---------------------------------------------------------------------------------------- licences
@@ -148,48 +161,53 @@ def package_version(name: str) -> str:
     return out.stdout.split()[-1] if out.returncode == 0 and out.stdout.strip() else "unknown"
 
 
-def write_licences(dest: Path) -> None:
+def write_licences(dest: Path, check_environment: bool = True, include_msys2_texts: bool = True) -> None:
+    """Write the release's ``licenses`` folder: THIRD-PARTY-NOTICES.txt (generated from packaging/third_party.py)
+    plus the verbatim licence texts. Deterministic: it reads only files kept in the repository, except the
+    licence files of the six MSYS2 libraries that are not covered by the source bundle (each MSYS2 package ships
+    its own), which are checked against the documented package versions.
+
+    ``check_environment`` verifies that the running Python/PyInstaller are the versions the notices document;
+    ``include_msys2_texts`` can be switched off by tests that do not need MSYS2.
+    """
+    problems = third_party.verify_licence_files()
+    if problems:
+        sys.exit(f"packaging/licenses does not match its manifest: {problems}")
+    if check_environment:
+        mismatches = third_party.python_runtime_mismatches()
+        pyi = third_party.pyinstaller_mismatch()
+        if pyi:
+            mismatches.append(pyi)
+        if mismatches:
+            sys.exit("The build environment differs from the versions documented in the licence notices: "
+                     f"{mismatches}. Update packaging/third_party.py and packaging/licenses first.")
     dest.mkdir(parents=True, exist_ok=True)
-    lines = [f"{APP_NAME} {config.APP_VERSION} - third-party components",
-             "=" * 60, "",
-             "The folder tools\\libimobiledevice contains unmodified binaries from the MSYS2 project",
-             "(https://www.msys2.org, UCRT64 environment). They are separate programs/libraries that",
-             f"{APP_NAME} runs or loads; their licences are reproduced in this folder.",
-             "Source code for each component is available from the URL listed, and the exact MSYS2",
-             "package sources from https://packages.msys2.org/ (search for the package name).", ""]
-    for name, licence, files, url, provides in COMPONENTS:
-        version = package_version(name)
-        copied = []
-        for rel in files:
-            src = LICENSES_SRC / rel
-            if not src.is_file():
-                sys.exit(f"Licence file missing: {src}")
-            target = dest / f"{name}-{Path(rel).name}.txt"
-            shutil.copy2(src, target)
-            copied.append(target.name)
-        lines += [f"{name} {version}",
-                  f"  MSYS2 package : mingw-w64-ucrt-x86_64-{name}",
-                  f"  Licence       : {licence}",
-                  f"  Files         : {', '.join(provides)}",
-                  f"  Source        : {url}",
-                  f"  Licence text  : {', '.join(copied)}", ""]
-    # Python runtime and Tcl/Tk bundled by PyInstaller.
-    base = Path(sys.base_prefix)
-    # Tcl and Tk share the same licence terms; Python's install ships the text with Tk.
-    tcl_terms = next(iter(sorted((base / "tcl").glob("tcl8*/license.terms")) +
-                          sorted((base / "tcl").glob("tk8*/license.terms"))), None)
-    for label, src, target in (("Python", base / "LICENSE.txt", "python-LICENSE.txt"),
-                               ("Tcl/Tk", tcl_terms, "tcltk-license.terms.txt")):
-        if not (src and Path(src).is_file()):
-            sys.exit(f"{label} licence text not found")
-        shutil.copy2(src, dest / target)
-        lines += [f"{label} runtime (bundled by PyInstaller)", f"  Licence text  : {target}", ""]
-    lines += ["PyInstaller bootloader: GPL-2.0 with the PyInstaller bootloader exception",
-              "  (https://github.com/pyinstaller/pyinstaller/blob/develop/COPYING.txt)", "",
-              "Apple Mobile Device Support (needed to talk to an iPhone over USB) is NOT included;",
-              "it is installed by Apple's 'Apple Devices' app from the Microsoft Store."]
-    (dest / "THIRD-PARTY-NOTICES.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"wrote {len(list(dest.iterdir()))} licence files to {dest.relative_to(ROOT)}")
+    for name in third_party.licence_file_names():
+        shutil.copyfile(third_party.LICENCES_DIR / name, dest / name)
+    versions = {}
+    if include_msys2_texts:
+        for name, pinned, _licence, files, _url, _provides in third_party.MSYS2_OTHER:
+            found = package_version(name)
+            if found != pinned:
+                sys.exit(f"MSYS2 package {name} is {found}, the notices document {pinned}. "
+                         "Update packaging/third_party.py first.")
+            versions[name] = found
+            for rel, shipped in files:
+                src = LICENSES_SRC / rel
+                if not src.is_file():
+                    sys.exit(f"Licence file missing: {src}")
+                shutil.copyfile(src, dest / shipped)
+    text = third_party.build_notices(APP_NAME, config.APP_VERSION, versions or None)
+    with open(dest / "THIRD-PARTY-NOTICES.txt", "w", encoding="utf-8", newline="\r\n") as f:
+        f.write(text)
+    print(f"wrote {len(list(dest.iterdir()))} licence files to {dest}")
+
+
+def build_source_bundle(out_dir: Path | None = None) -> Path:
+    """Create the separate Third-Party-Source-Code zip (and its .sha256) next to the other release files."""
+    out = third_party.make_source_bundle(out_dir or DIST / "release", config.APP_VERSION)
+    print(f"source bundle: {out}  ({out.stat().st_size} bytes)")
+    return out
 
 
 def write_readme(path: Path) -> None:
@@ -200,6 +218,11 @@ Launch:   double-click "{APP_NAME}.exe" in this folder.
           Keep the whole folder together - the program needs the _internal and tools folders.
 
 Requires: Windows 10 or 11 (64-bit)
+          Microsoft Visual C++ Redistributable for Visual Studio 2015-2022 (x64), version
+          {'.'.join(map(str, runtime_policy.VC_MINIMUM[:3]))} or newer. It is NOT included. Most PCs already have it; if the program
+          does not start ("Failed to load Python DLL"), install the latest x64 version from
+          {runtime_policy.VC_DOWNLOAD_PAGE}
+          (installing it may need administrator rights).
           Apple's "Apple Devices" app (Microsoft Store) - it provides the iPhone USB driver/service.
           An iPhone connected by USB, unlocked, and set to trust this computer.
 
@@ -208,6 +231,69 @@ Not needed: Python, MSYS2 or any developer tools - everything else is included.
 Built:    {date.today().isoformat()}
 Licences: see the licenses folder.
 """, encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------------------- PyInstaller
+@contextlib.contextmanager
+def build_environment():
+    """Run the build with a cleaned environment: PATH is reduced to the Python install and the Windows
+    folders (so a JDK or other tool on PATH cannot supply runtime DLLs) and Java variables are removed."""
+    saved = dict(os.environ)
+    cleaned = runtime_policy.clean_build_environment(saved)
+    os.environ.clear()
+    os.environ.update(cleaned)
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
+def required_runtime_files() -> list[str]:
+    """Runtime files that must still be collected (guards against filtering out something unrelated)."""
+    return [f"python{sys.version_info.major}{sys.version_info.minor}.dll", "libffi-8.dll", "tcl86t.dll",
+            "tk86t.dll", "zlib1.dll"]
+
+
+def verify_runtime_exclusions(app_dir: Path) -> None:
+    """Fail the build if a Microsoft runtime file slipped into the release, or a needed file went missing."""
+    leaked = runtime_policy.find_excluded_files(app_dir)
+    if leaked:
+        sys.exit(f"Microsoft runtime files found in the release ({len(leaked)}): {leaked[:5]} ...")
+    internal = app_dir / "_internal"
+    missing = [f for f in required_runtime_files() if not (internal / f).is_file()]
+    if missing:
+        sys.exit(f"Required runtime files are missing from {internal}: {missing}")
+    print(f"runtime check: none of the {len(runtime_policy.EXCLUDED_RUNTIME_FILES)} Microsoft runtime files "
+          f"is bundled; required files present")
+
+
+def write_runtime_record(workpath: Path, app_dir: Path) -> Path:
+    """Record (in the build folder, never in the release) what the runtime policy did for this build."""
+    record = {
+        "built_at": datetime.now().isoformat(timespec="seconds"),
+        "excluded_files": list(runtime_policy.EXCLUDED_RUNTIME_FILES),
+        "found_in_release": runtime_policy.find_excluded_files(app_dir),
+        "minimum_vc_runtime": ".".join(map(str, runtime_policy.VC_MINIMUM[:3])),
+    }
+    path = Path(workpath) / "runtime-exclusions.json"
+    path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return path
+
+
+def run_pyinstaller(distpath: Path, workpath: Path, version_file: Path) -> Path:
+    """Build the one-folder app from the spec file (cleaned environment). Returns the app folder."""
+    import PyInstaller.__main__ as pyinstaller
+    app_dir = Path(distpath) / APP_NAME
+    if app_dir.exists():
+        shutil.rmtree(app_dir)
+    with build_environment():
+        os.environ["IPHONE_APP_MANAGER_VERSION_FILE"] = str(version_file)   # read by the spec; restored on exit
+        pyinstaller.run([str(SPEC_FILE), "--noconfirm", "--clean",
+                         "--distpath", str(distpath), "--workpath", str(workpath)])
+    verify_runtime_exclusions(app_dir)
+    print(f"runtime record: {write_runtime_record(workpath, app_dir)}")
+    return app_dir
 
 
 # ---------------------------------------------------------------------------------------- main
@@ -242,8 +328,11 @@ def build_installer() -> Path:
     out = INSTALLER_DIR / installer_name()
     if out.exists():
         out.unlink()
+    major, minor, bld, rbld = runtime_policy.VC_MINIMUM
     subprocess.run([str(find_iscc()), "/Q", f"/DAppVersion={config.APP_VERSION}", f"/DSourceDir={APP_DIR}",
-                    f"/DOutputDir={INSTALLER_DIR}", str(INSTALLER_SCRIPT)], check=True)
+                    f"/DOutputDir={INSTALLER_DIR}",
+                    f"/DVcMinMajor={major}", f"/DVcMinMinor={minor}", f"/DVcMinBld={bld}", f"/DVcMinRbld={rbld}",
+                    str(INSTALLER_SCRIPT)], check=True)
     if not out.is_file():
         sys.exit(f"Inno Setup did not produce {out}")
     print(f"installer: {out.relative_to(ROOT)} ({out.stat().st_size / 1e6:.1f} MB)")
@@ -256,8 +345,12 @@ def main() -> None:
         step("Installer (Inno Setup)")
         build_installer()
         return
+    if "--source-bundle-only" in args:      # just the separate third-party source bundle (dist\release)
+        step("Third-party source bundle")
+        build_source_bundle()
+        return
     try:
-        import PyInstaller.__main__ as pyinstaller
+        import PyInstaller.__main__  # noqa: F401
     except ImportError:
         sys.exit("PyInstaller not found - run this script with .venv-build\\Scripts\\python.exe")
 
@@ -269,19 +362,8 @@ def main() -> None:
     version_file(vfile)
     print(f"icon: {icon.relative_to(ROOT)} ({icon.stat().st_size} bytes)")
 
-    step("2. PyInstaller (one-folder, windowed)")
-    if APP_DIR.exists():
-        shutil.rmtree(APP_DIR)
-    pyinstaller.run([
-        str(ROOT / "main.py"),
-        "--name", APP_NAME, "--onedir", "--windowed", "--noconfirm", "--clean",
-        "--icon", str(icon), "--version-file", str(vfile),
-        "--distpath", str(DIST), "--workpath", str(ROOT / "build"), "--specpath", str(ROOT / "build"),
-        # Helper modules are imported dynamically in helper mode (see main.run_helper_mode).
-        "--hidden-import", "iphone_app_manager.icon_helper",
-        "--hidden-import", "iphone_app_manager.inventory_helper",
-        "--exclude-module", "unittest", "--exclude-module", "pydoc",
-    ])
+    step("2. PyInstaller (one-folder, windowed; Microsoft runtime files left out)")
+    run_pyinstaller(DIST, ROOT / "build", vfile)
 
     step("3. libimobiledevice tools and DLLs")
     copy_tools(APP_DIR / config.BUNDLED_TOOLS_SUBDIR)
@@ -294,8 +376,11 @@ def main() -> None:
     size = sum(p.stat().st_size for p in APP_DIR.rglob("*") if p.is_file())
     step(f"Portable release: {exe}  (folder size {size / 1e6:.1f} MB)")
 
+    step("5. Third-party source bundle (separate release asset)")
+    build_source_bundle()
+
     if "--installer" in args:
-        step("5. Installer (Inno Setup)")
+        step("6. Installer (Inno Setup)")
         build_installer()
 
 

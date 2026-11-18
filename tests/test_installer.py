@@ -96,6 +96,106 @@ class InstallerScriptTests(unittest.TestCase):
         self.assertIn("skipifsilent", run)
 
 
+def code_section(text: str) -> str:
+    return section(text, "Code")
+
+
+class InstallerPrerequisiteTests(unittest.TestCase):
+    """The Visual C++ Redistributable (x64) check in the installer's [Code] section (read from the script;
+    the compiled installer's behaviour was exercised in the Sandbox runs recorded in the Task 5 report)."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(ROOT / "packaging"))
+        import runtime_policy
+        cls.policy = runtime_policy
+        cls.text = ISS.read_text(encoding="utf-8")
+        cls.code = code_section(cls.text)
+
+    def define(self, name: str) -> str:
+        match = re.search(rf'^\s*#define {name} (?:"([^"]*)"|(\S+))\s*$', self.text, re.MULTILINE)
+        self.assertIsNotNone(match, name)
+        return match.group(1) if match.group(1) is not None else match.group(2)
+
+    def test_script_has_a_code_section(self):
+        self.assertTrue(self.code.strip())
+        self.assertIn("function InitializeSetup(): Boolean;", self.code)
+
+    def test_minimum_version_matches_the_policy(self):
+        major, minor, bld, rbld = self.policy.VC_MINIMUM
+        self.assertEqual((int(self.define("VcMinMajor")), int(self.define("VcMinMinor")),
+                          int(self.define("VcMinBld")), int(self.define("VcMinRbld"))), (major, minor, bld, rbld))
+        # every default is overridable from build.py (so the two can never silently diverge)
+        for name in ("VcMinMajor", "VcMinMinor", "VcMinBld", "VcMinRbld"):
+            self.assertIn(f"#ifndef {name}", self.text)
+        build_source = (ROOT / "packaging" / "build.py").read_text(encoding="utf-8")
+        for name in ("VcMinMajor", "VcMinMinor", "VcMinBld", "VcMinRbld"):
+            self.assertIn(f"/D{name}=", build_source)
+
+    def test_registry_location_download_page_and_values(self):
+        self.assertEqual(self.define("VcRuntimeKey"), self.policy.VC_RUNTIME_REGISTRY_KEY)
+        self.assertEqual(self.define("VcDownloadUrl"), self.policy.VC_DOWNLOAD_PAGE)
+        self.assertIn("VcRuntimeKey = '{#VcRuntimeKey}'", self.code)
+        for value in self.policy.VC_RUNTIME_VALUES:
+            self.assertIn(f"'{value}'", self.code, value)
+
+    def test_reads_the_64_bit_registry_view_only(self):
+        reads = re.findall(r"RegQueryDWordValue\((\w+),", self.code)
+        self.assertGreaterEqual(len(reads), 5)
+        self.assertEqual(set(reads), {"HKLM64"})
+        self.assertNotIn("HKCU", self.code)
+        self.assertNotIn("HKLM32", self.code)
+
+    def test_check_is_not_installed_equals_one_alone(self):
+        self.assertIn("if Installed <> 1 then Exit;", self.code)                 # requires Installed = 1 ...
+        self.assertIn("PackVersionComponents(Major, Minor, Bld, Rbld)", self.code)     # ... and compares the version
+        self.assertIn("ComparePackedVersion(Have, Need) >= 0", self.code)
+        self.assertIn("Need := PackVersionComponents({#VcMinMajor}, {#VcMinMinor}, {#VcMinBld}, {#VcMinRbld});",
+                      self.code)
+        self.assertIn("if Major <> {#VcMinMajor} then Exit;", self.code)          # only the v14 family
+
+    def test_three_outcomes_are_distinguished(self):
+        for outcome in ("'missing'", "'older'", "'ok'"):
+            self.assertIn(f"Result := {outcome};", self.code)
+        # a missing key/value leaves the result at 'missing'; a readable-but-low version ends at 'older'
+        self.assertLess(self.code.index("Result := 'missing';"), self.code.index("Result := 'older';"))
+        self.assertLess(self.code.index("Result := 'older';"), self.code.index("Result := 'ok';"))
+
+    def test_warning_explains_what_to_install(self):
+        for fragment in ("was not found on this PC", "is too old (version", "or newer", "is not included in this installer",
+                         "will not start until you install it", "{#VcDownloadUrl}", "administrator rights",
+                         "Do you want to continue installing iPhone App Manager anyway?"):
+            self.assertIn(fragment, self.code, fragment)
+        self.assertIn("Microsoft Visual C++ Redistributable (x64)", self.code)
+        self.assertIn("{#VcMinMajor}.{#VcMinMinor}.{#VcMinBld}", self.code)
+
+    def test_user_may_continue_and_silent_installs_continue(self):
+        # Yes/No question, default answer Yes (also what /SUPPRESSMSGBOXES answers), only "No" stops setup.
+        self.assertIn("SuppressibleMsgBox(Msg, mbError, MB_YESNO, IDYES) = IDNO", self.code)
+        self.assertIn("Result := True;", self.code)
+        self.assertIn("Result := False;", self.code)
+        self.assertEqual(self.code.count("Result := False;"), 1)
+        self.assertNotIn("Abort", self.code)
+        self.assertNotIn("RaiseException", self.code)
+        self.assertNotIn("MsgBox(Msg, mbError, MB_OK", self.code)
+
+    def test_ok_runtime_shows_no_warning(self):
+        self.assertIn("if Status = 'ok' then Exit;", self.code)
+        self.assertLess(self.code.index("if Status = 'ok' then Exit;"), self.code.index("SuppressibleMsgBox("))
+
+    def test_decision_is_logged(self):
+        self.assertIn("Log('Visual C++ x64 runtime check: '", self.code)
+
+    def test_prerequisite_is_not_bundled(self):
+        files = section(self.joined(), "Files")
+        self.assertNotRegex(files, r"(?i)vc_redist|vcredist|VCRUNTIME")
+        self.assertNotIn("[Run]\nFilename: \"{tmp}", self.text)       # nothing downloads/launches a redistributable
+        self.assertNotRegex(self.text, r"(?i)vc_redist|vcredist")
+
+    def joined(self) -> str:
+        return re.sub(r"\\\s*\n\s*", " ", self.text)
+
+
 class InstallerBuildTests(unittest.TestCase):
     def test_build_script_names_the_installer(self):
         build = load_build_script()
