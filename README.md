@@ -33,9 +33,37 @@ Keyboard shortcuts: **F5** refresh · **Ctrl+F** search · **Esc** (in search) c
 
 ## Screenshots
 
-*Screenshots have not been added yet.*
+The device name and app identifiers in these images have been replaced with neutral examples. See [`Screenshots/README.md`](Screenshots/README.md) for details.
 
-<!-- Add images to docs/screenshots/ and reference them here. Check they show no personal app names or device names first. -->
+### Main window
+![The main window, showing the connection status and storage bar, the search box and buttons, and the list of installed and offloaded apps with their sizes](Screenshots/01-main-window.png)
+
+*The connected iPhone, its storage bar, and every app with its status, version and sizes.*
+
+### Sort by storage use
+![The app list sorted by Largest total, with the biggest apps first](Screenshots/02-sort-largest-total.png)
+
+*Sort by **Largest total** to find the apps taking the most space.*
+
+### Offloaded apps and retained data
+![A search result showing one offloaded app with its placeholder size, retained data and total](Screenshots/03-offloaded-app.png)
+
+*Offloaded apps are marked **Offloaded**. The columns show the small placeholder left behind and the data iOS kept.*
+
+### App details
+![The details panel for an offloaded app, listing its status, bundle ID, version, retained data, placeholder size, total, location and type](Screenshots/04-app-details.png)
+
+*Rest the pointer on an app's name to see its details.*
+
+### Uninstall confirmation
+![The confirmation window listing the selected app, a warning that data on the iPhone may be permanently deleted, and Cancel and Uninstall buttons](Screenshots/05-uninstall-confirmation.png)
+
+*Nothing is removed until you click **Uninstall** in this window. **Cancel** closes it without removing anything.*
+
+### iPhone storage overview
+![The iPhone storage panel showing capacity, used space, free space and an explanatory note](Screenshots/06-storage-overview.png)
+
+*Rest the pointer on the storage bar to see capacity, used and free space.*
 
 ## System requirements
 

@@ -58,3 +58,6 @@ tmp/
 Thumbs.db
 desktop.ini
 .claude/
+
+# Private original screenshots (contain real device and app data)
+Screenshots/Source/
