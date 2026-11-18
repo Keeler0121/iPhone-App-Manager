@@ -1,7 +1,7 @@
-iPhone App Manager 1.0.0 - Third-party source code (MSYS2 source packages)
+iPhone App Manager 1.0.1 - Third-party source code (MSYS2 source packages)
 ===========================================================================
 
-This bundle accompanies the Windows release of iPhone App Manager 1.0.0 (installer and portable ZIP).
+This bundle accompanies the Windows release of iPhone App Manager 1.0.1 (installer and portable ZIP).
 It holds the MSYS2 source packages for FIVE third-party components whose compiled files are bundled
 in the release, in the folder  tools\libimobiledevice .
 

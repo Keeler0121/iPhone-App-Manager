@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "iPhone App Manager"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 
 # True when running as the packaged Windows app (PyInstaller); False when run from source.
 IS_FROZEN = bool(getattr(sys, "frozen", False))

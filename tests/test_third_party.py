@@ -496,7 +496,7 @@ class DocumentationConsistencyTests(unittest.TestCase):
     def test_readme_and_release_notes_describe_the_source_bundle_accurately(self):
         for name in ("README.md", "RELEASE_NOTES.md"):
             text = self.read(name)
-            self.assertIn("Third-Party-Source-Code-1.0.0.zip", text, name)
+            self.assertIn(tp.bundle_name(config.APP_VERSION), text, name)
             self.assertRegex(text, r"(?i)only those five|covers only those five", name)
             for component in ("ideviceinstaller", "libimobiledevice-glue", "libusbmuxd", "libplist"):
                 self.assertIn(component, text, name)

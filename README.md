@@ -1,6 +1,6 @@
 # iPhone App Manager
 
-**Version 1.0.0** · Windows desktop app
+**Version 1.0.1** · Windows desktop app
 
 A free Windows app for viewing and removing the apps on an iPhone connected by USB. See your installed and offloaded apps with their real icons and storage use, tick the ones you no longer want, and remove them in one go, with a confirmation step and a check afterwards that each app is really gone.
 
@@ -86,7 +86,7 @@ Download the latest **x64** version from Microsoft's official page: <https://lea
 ## Installation
 
 1. Install the **Microsoft Visual C++ Redistributable (x64)** (see above) and **Apple Devices** from the Microsoft Store if you do not already have them.
-2. Download `iPhone App Manager Setup 1.0.0.exe` from the project's **Releases** page.
+2. Download `iPhone App Manager Setup 1.0.1.exe` from the project's **Releases** page.
 3. Run it. It installs just for you (no administrator prompt) into `%LOCALAPPDATA%\Programs\iPhone App Manager`, adds a Start Menu entry, and optionally a Desktop shortcut. If the Visual C++ Redistributable is missing or too old, it warns you first.
 4. Start **iPhone App Manager** from the Start Menu.
 
@@ -256,4 +256,4 @@ The Microsoft Visual C++ Redistributable (x64) is **not** bundled; it is install
 
 **Microsoft code inside Python.** Python's licence for its Windows build says the python.org binaries contain Microsoft Distributable Code, and asks anyone who redistributes programs that include it to require distributors and end users to agree to terms that protect that code. iPhone App Manager does not currently present end-user terms, and Microsoft's own terms have not been reviewed here, so it has **not been established** that this condition is met.
 
-**Source code.** The MSYS2 source packages for the five components ideviceinstaller, libimobiledevice, libimobiledevice-glue, libusbmuxd and libplist are provided as a separate download with each release (`Third-Party-Source-Code-1.0.0.zip`, built by `packaging\build.py` from `packaging\third-party-sources`). It covers only those five packages. Sources for the other components are available from their upstream projects.
+**Source code.** The MSYS2 source packages for the five components ideviceinstaller, libimobiledevice, libimobiledevice-glue, libusbmuxd and libplist are provided as a separate download with each release (`Third-Party-Source-Code-1.0.1.zip`, built by `packaging\build.py` from `packaging\third-party-sources`). It covers only those five packages. Sources for the other components are available from their upstream projects.

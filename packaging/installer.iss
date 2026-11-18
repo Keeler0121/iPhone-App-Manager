@@ -3,7 +3,7 @@
 ; (build.py passes AppVersion, SourceDir and OutputDir; the defaults below match the project layout.)
 
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.0.1"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\dist\iPhone App Manager"

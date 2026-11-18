@@ -1,3 +1,57 @@
+# iPhone App Manager 1.0.1
+
+**Licensing-notice correction release** · Windows desktop app · USB only
+
+Version 1.0.1 changes **only the licence notices and documentation**. The application, its user interface and every bundled program and library are the same as in 1.0.0. Only the version number and the licence text have changed. If you already have 1.0.0 you gain nothing functionally; update if you want the corrected notices.
+
+> This is an independent project. It is not made by, or affiliated with, Apple Inc. "iPhone" is a trademark of Apple Inc.
+
+## What changed in 1.0.1
+
+All changes are to `THIRD-PARTY-NOTICES.txt` (in the `licenses` folder of the installer and the portable ZIP), the README and these notes:
+
+- **libplist:** the notices now record the author's investigation of libplist 2.7.0. MSYS2 lists GPL-2.0-or-later as well as LGPL-2.1-or-later, and the upstream tree contains a GPL v2 text. No GPL-licensed source file was found in the code compiled into `libplist-2.0.dll`. The reason for MSYS2's GPL entry could not be established, so the GPL reference and its qualification are kept.
+- **xz/liblzma:** the copy inside Python's `_lzma.pyd` is liblzma 5.2.5, public domain according to its own `COPYING` and source headers. It is described separately from the MSYS2 xz 5.8.4 (0BSD) that the libimobiledevice tools use.
+- **Microsoft code inside Python:** the notices now state Python's condition for its Windows binaries (Microsoft Distributable Code, and end users agreeing to terms that protect it). iPhone App Manager does not currently present end-user terms, and Microsoft's own terms have not been reviewed here, so it has **not been established** that this condition is met.
+- **Own licence:** the README describes iPhone App Manager as intended to be released under a proprietary licence, with no permission to resell or redistribute it without the author's authorisation. A formal licence text has not been published yet.
+- The README's source-code paragraph had two garbled path names, now corrected.
+- `Third-Party-Source-Code-1.0.1.zip` has the same twelve MSYS2 source files, signatures and checksums as `Third-Party-Source-Code-1.0.0.zip`. Only its folder name and the version number in its `README.txt` differ.
+
+The notices are the author's own audit. They have not been reviewed by a lawyer and are not a statement that every obligation has been met.
+
+## Downloads (1.0.1)
+
+| File | Size |
+|---|---|
+| `iPhone App Manager Setup 1.0.1.exe` | 12,631,162 bytes (about 12.0 MB) |
+| `iPhone-App-Manager-Setup-1.0.1.sha256` | SHA-256 checksum for the installer |
+| `iPhone-App-Manager-1.0.1-Portable.zip` | 15,094,159 bytes (about 14.4 MB) |
+| `iPhone-App-Manager-1.0.1-Portable.sha256` | SHA-256 checksum for the portable ZIP |
+| `Third-Party-Source-Code-1.0.1.zip` | 1,483,314 bytes (about 1.4 MB) |
+| `Third-Party-Source-Code-1.0.1.sha256` | SHA-256 checksum for the source-code ZIP |
+
+**SHA-256 (1.0.1)**
+
+```
+370327FD4FFA90C662701A505387F09762102A222F5260FCB57C12B6205AC6F4  iPhone App Manager Setup 1.0.1.exe
+247D02FFB5C42AAAC754FFF67179D4C9031D4EB4B0C7518D259CCD3012165355  iPhone-App-Manager-1.0.1-Portable.zip
+5B96521D68F50D8670214784AFD512F374C0E3C839B73F7983A890E9918D0C4C  Third-Party-Source-Code-1.0.1.zip
+```
+
+Check a download in PowerShell; the result should match the value above:
+
+```powershell
+Get-FileHash .\iPhone-App-Manager-1.0.1-Portable.zip -Algorithm SHA256
+```
+
+The requirements, installation steps, limitations and safety information below are unchanged from 1.0.0 and still apply. The installer is not code-signed, as before.
+
+---
+
+# Version 1.0.0 release notes (historical, unchanged)
+
+The notes below are the original 1.0.0 notes, kept as published. Their file names and hashes refer to the 1.0.0 assets, which remain available on the 1.0.0 release page.
+
 # iPhone App Manager 1.0.0
 
 **First release** · Windows desktop app · USB only
