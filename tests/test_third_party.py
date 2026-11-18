@@ -153,6 +153,42 @@ class NoticesContentTests(unittest.TestCase):
         self.assertIn("212 files", entry)
         self.assertIn("libplist-2.7.0-COPYING-GPLv2.txt", entry)
 
+    def test_libplist_investigation_findings_are_recorded_without_dropping_the_gpl_reference(self):
+        entry = block(self.text, "libplist 2.7.0-4")
+        self.assertIn("\"GPL2+\" from the package's first version (libplist 1.12, 2014)", entry)
+        self.assertIn("2.3.0 update (2023-05-13)", entry)
+        self.assertIn("without stating a reason", entry)
+        self.assertIn("MSYS2 has not documented why its GPL entry exists", entry)
+        self.assertIn("003-fix-py-soext.patch", entry)
+        self.assertIn("GPL v3 or later", entry)
+        self.assertIn("GPL reference is retained here rather than removed", entry)
+        self.assertIn("not been reviewed by a lawyer", entry)
+
+    def test_microsoft_distributable_code_condition_is_stated_as_not_established(self):
+        t = " ".join(self.text.split())
+        i = t.index("Microsoft Distributable Code inside Python")
+        para = t[i:i + 1400]
+        self.assertIn("require distributors and end users to agree to terms", para)
+        self.assertIn("does not currently present end-user terms", para)
+        self.assertIn("has NOT been established that this condition is met", para)
+        self.assertIn("does not include Microsoft's Visual C++ Redistributable", para)
+        self.assertNotRegex(para, r"(?i)is (fully )?compliant|complies with")
+
+    def test_python_xz_5_2_5_is_described_separately_from_msys2_xz_5_8_4(self):
+        t = self.text
+        entry = block(t, "xz/liblzma 5.2.5")
+        self.assertIn("separate from the MSYS2 xz 5.8.4 in section 1", entry)
+        self.assertIn("Public domain", entry)
+        self.assertIn("131 carry a public-domain dedication", entry)
+        self.assertIn("_lzma.pyd", entry)
+        self.assertIn("python.props and get_externals.bat", entry)
+        self.assertIn("This software includes code from XZ Utils", entry)
+        self.assertIn("belong to the separate MSYS2 xz 5.8.4", entry)
+        self.assertNotIn("not separately verified", t)
+        msys2 = block(t, "xz 5.8.4-1")
+        self.assertIn("0BSD", msys2)
+        self.assertNotIn("5.2.5", msys2)
+
     def test_microsoft_prerequisite_wording_is_retained(self):
         t = self.text
         self.assertIn(rp.VC_DOWNLOAD_PAGE, t)
@@ -469,8 +505,9 @@ class DocumentationConsistencyTests(unittest.TestCase):
         for name in ("README.md", "RELEASE_NOTES.md"):
             text = self.read(name)
             self.assertIn("libplist", text)
-            self.assertRegex(text, r"(?i)not (fully )?resolved|not been established", name)
+            self.assertRegex(text, r"(?i)not (fully )?resolved|not been established|could not be established", name)
             self.assertIn("GPL-2.0-or-later", text, name)
+            self.assertIn("no GPL-licensed source file", text, name)
 
     def test_documents_make_no_compliance_claim_and_no_obsolete_ideviceinfo_claim(self):
         for name in ("README.md", "RELEASE_NOTES.md"):

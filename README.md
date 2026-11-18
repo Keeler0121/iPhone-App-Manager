@@ -238,7 +238,7 @@ tests/                          unit, UI (fake device) and packaging tests
 
 ## Licence and third-party software
 
-The licence for iPhone App Manager's own source code has **not been chosen yet**. Until a licence file is added, all rights are reserved by the author.
+iPhone App Manager itself is intended to be released under a proprietary licence: no permission is given to resell or redistribute it without the author's authorisation. A formal licence text has not been published yet; until it is, all rights are reserved by the author.
 
 The Windows release bundles third-party programs and libraries, each under its own licence. The release's `licenses` folder contains `THIRD-PARTY-NOTICES.txt` (the notices, with versions, copyright holders and sources) and the licence texts it names. The notices are the author's own audit, have not been reviewed by a lawyer, and are not a statement that every obligation has been met. In summary:
 
@@ -246,12 +246,14 @@ The Windows release bundles third-party programs and libraries, each under its o
 |---|---|
 | ideviceinstaller 1.1.1 | GPL-2.0-or-later |
 | libimobiledevice 1.3.0 (library and `ideviceinfo`), libimobiledevice-glue 1.3.2, libusbmuxd 2.1.1 | LGPL-2.1-or-later (glue also contains LibTomCrypt code under its own terms) |
-| libplist 2.7.0 | Mainly LGPL-2.1-or-later, with MIT-licensed parts. MSYS2 also lists GPL-2.0-or-later; that discrepancy is **not resolved** and the notices keep the qualification. |
+| libplist 2.7.0 | Mainly LGPL-2.1-or-later, with MIT-licensed parts. MSYS2 also lists GPL-2.0-or-later. The author's investigation found no GPL-licensed source file in the compiled library, but why MSYS2 lists the GPL entry **could not be established**, so the notices keep the GPL reference and the qualification. |
 | OpenSSL 4.1.0 (MSYS2), libzip, zlib 1.4, bzip2, xz (liblzma), zstd | Apache-2.0; BSD-3-Clause; Zlib; bzip2 licence; 0BSD; BSD-3-Clause or GPL (dual) |
-| Python 3.12.10 runtime and its components (OpenSSL 3.0.16, Tcl/Tk 8.6.15, libffi 3.4.4, Expat 2.7.1, zlib 1.3.1, libmpdec 2.5.1) | PSF licence; Apache-2.0; Tcl/Tk licence; MIT; MIT; Zlib; BSD-2-Clause |
+| Python 3.12.10 runtime and its components (OpenSSL 3.0.16, Tcl/Tk 8.6.15, libffi 3.4.4, Expat 2.7.1, zlib 1.3.1, libmpdec 2.5.1; xz/liblzma 5.2.5 inside `_lzma.pyd`, separate from the MSYS2 xz) | PSF licence; Apache-2.0; Tcl/Tk licence; MIT; MIT; Zlib; BSD-2-Clause; public domain (xz 5.2.5) |
 | PyInstaller 6.22.3 | GPL-2.0-or-later with the PyInstaller bootloader exception; Apache-2.0 for the embedded run-time hooks |
 | Inno Setup 6.7.3 (installer only) | Inno Setup licence |
 
 The Microsoft Visual C++ Redistributable (x64) is **not** bundled; it is installed separately and is under Microsoft's own terms.
 
-**Source code.** The MSYS2 source packages for the five components ideviceinstaller, libimobiledevice, libimobiledevice-glue, libusbmuxd and libplist are provided as a separate download with each release (`Third-Party-Source-Code-1.0.0.zip`, built by `packaginguild.py` from `packaging	hird-party-sources`). It covers only those five packages. Sources for the other components are available from their upstream projects.
+**Microsoft code inside Python.** Python's licence for its Windows build says the python.org binaries contain Microsoft Distributable Code, and asks anyone who redistributes programs that include it to require distributors and end users to agree to terms that protect that code. iPhone App Manager does not currently present end-user terms, and Microsoft's own terms have not been reviewed here, so it has **not been established** that this condition is met.
+
+**Source code.** The MSYS2 source packages for the five components ideviceinstaller, libimobiledevice, libimobiledevice-glue, libusbmuxd and libplist are provided as a separate download with each release (`Third-Party-Source-Code-1.0.0.zip`, built by `packaging\build.py` from `packaging\third-party-sources`). It covers only those five packages. Sources for the other components are available from their upstream projects.

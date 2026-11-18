@@ -264,10 +264,18 @@ LIBPLIST_OPEN_POINT = """\
                   src/time64_limits.h (no header; they appear to belong to the MIT time64 code). The only
                   files with GPL headers are 10 autotools/libtool build scripts (ltmain.sh, config.guess,
                   config.sub, depcomp, missing, compile, test-driver, aclocal.m4, m4/libtool.m4,
-                  m4/ax_python_devel.m4), and the generated configure script embeds libtool's GPL text;
-                  they carry the usual autotools/libtool special exceptions and are not part of the
-                  binary. Which licence MSYS2's GPL entry is meant to cover has NOT been established, so
-                  the GPL reference is retained here rather than removed."""
+                  m4/ax_python_devel.m4; GPL v2 or later, except config.guess, config.sub and
+                  ax_python_devel.m4, which are GPL v3 or later), and the generated configure script
+                  embeds libtool's GPL text; they carry the usual autotools/libtool special exceptions and
+                  are not part of the binary. The MSYS2 recipe's history shows "GPL2+" from the package's
+                  first version (libplist 1.12, 2014) until its 2.3.0 update (2023-05-13), which changed it
+                  to the current expression without stating a reason; upstream file headers were LGPL in
+                  the versions checked (1.12, 2.0.0, 2.2.0, 2.3.0). The bundled libplist-2.0.dll is the
+                  unmodified MSYS2 build (its SHA-256 is pinned by the build), and MSYS2's one patch
+                  (003-fix-py-soext.patch) changes only the Python-binding build files, not the compiled
+                  sources. MSYS2 has not documented why its GPL entry exists, and which licence it is
+                  meant to cover has NOT been established, so the GPL reference is retained here rather
+                  than removed. This has not been reviewed by a lawyer."""
 
 
 def _msys2_five_entries(sp) -> list[str]:
@@ -435,10 +443,20 @@ def build_notices(app_name: str, app_version: str, msys2_versions: dict[str, str
           "  Source        : https://github.com/python/cpython/tree/v3.12.10/Modules/_decimal/libmpdec",
           "  Licence text  : python-libmpdec-2.5.1-LICENSE.txt (from the licence section of the Python 3.12.10",
           "                  documentation, Doc/license.rst)", "",
+          "xz/liblzma 5.2.5 (the copy inside Python; separate from the MSYS2 xz 5.8.4 in section 1)",
+          "  Licence       : Public domain. xz 5.2.5's COPYING says \"liblzma is in the public domain\". Of the 140",
+          "                  source files in CPython's Windows build of liblzma, 131 carry a public-domain",
+          "                  dedication; the other 9 are generated tables or build configuration with no licence",
+          "                  text. xz does not require a licence text to accompany it.",
+          "  Files         : _internal\\_lzma.pyd (liblzma is compiled into the extension)",
+          "  Version       : 5.2.5, from CPython v3.12.10 PCbuild/python.props and get_externals.bat; the version",
+          "                  is not readable from the binary.",
+          "  Source        : https://tukaani.org/xz/",
+          "  Acknowledgement: This software includes code from XZ Utils <https://tukaani.org/xz/>.",
+          "  Note          : the xz-COPYING.txt and xz-COPYING.0BSD.txt files in this folder belong to the",
+          "                  separate MSYS2 xz 5.8.4 in section 1, not to this copy.", "",
           "Other code compiled into Python's extension modules (not separately licensed in this file):",
-          "  bzip2 1.0.8 (_bz2.pyd; text in python-3.12.10-LICENSE.txt) and xz/liblzma 5.2.5 (_lzma.pyd), the",
-          "  versions named by CPython v3.12.10 PCbuild/get_externals.bat. The licence terms of the xz copy",
-          "  were not separately verified for this file.", "",
+          "  bzip2 1.0.8 (_bz2.pyd; text in python-3.12.10-LICENSE.txt).", "",
           "=" * 60, "3. PyInstaller 6.22.3 (builds iPhone App Manager.exe)", "=" * 60, "",
           "PyInstaller 6.22.3",
           "  Licence       : GNU General Public License v2 or later with a Bootloader Exception. The bootloader",
@@ -466,9 +484,14 @@ def build_notices(app_name: str, app_version: str, msys2_versions: dict[str, str
           "  Provided by Windows 10 and 11. This release no longer bundles ucrtbase.dll or the api-ms-win-*",
           "  files.", "",
           "Microsoft Distributable Code inside Python",
-          "  The python.org Python binaries contain Microsoft Distributable Code embedded by the linker. The",
-          "  conditions that apply are quoted in python-3.12.10-LICENSE.txt ('Additional Conditions for this",
-          "  Windows binary build').", "",
+          "  The python.org Python binaries contain Microsoft Distributable Code embedded by the linker in each",
+          "  .exe, .dll and .pyd file. Python's licence ('Additional Conditions for this Windows binary build',",
+          "  in python-3.12.10-LICENSE.txt) requires anyone who further distributes programs that include it to",
+          "  comply with Microsoft's distribution restrictions and to require distributors and end users to agree",
+          "  to terms that protect that code at least as much as Microsoft's own requirements. iPhone App Manager",
+          "  does not currently present end-user terms, and Microsoft's own licence terms have not been reviewed",
+          "  here, so it has NOT been established that this condition is met. This release does not include",
+          "  Microsoft's Visual C++ Redistributable or the Universal C Runtime.", "",
           "=" * 60, "5. Installer only: Inno Setup", "=" * 60, "",
           "This applies to the installer 'iPhone App Manager Setup', not to the portable ZIP.",
           "Inno Setup 6.7.3",
