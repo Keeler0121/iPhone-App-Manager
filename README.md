@@ -6,10 +6,19 @@ A free Windows app for viewing and removing the apps on an iPhone connected by U
 
 > This is an independent project. It is not made by, or affiliated with, Apple Inc. "iPhone" is a trademark of Apple Inc.
 
+> ## ⚠️ Important: removing apps is permanent
+>
+> - **Uninstalling an app permanently removes it from your iPhone**, together with the data it keeps on the phone (documents, settings, downloads, saved sign-ins).
+> - **Removing an offloaded app also discards its retained app data.** An offloaded app has already had the app itself removed by iOS, but its data is still kept. Removing it deletes that data for good.
+> - **These actions cannot be undone through iPhone App Manager.** You would have to reinstall the app yourself (for example from the App Store).
+> - **Check your selection carefully** before you confirm. Only the **Uninstall** button in the confirmation window starts a removal, and its **Cancel** button has the keyboard focus by default, so pressing Enter cancels.
+>
+> Accounts and anything stored online or in iCloud are not deleted, and subscriptions are not cancelled.
+
 ## Features
 
 - Lists the apps on your iPhone, including **offloaded** apps (apps whose data is kept but whose app is removed).
-- Shows the real app icons taken from the iPhone's Home Screen.
+- Shows the real app icons taken from the iPhone.
 - Shows storage information for the iPhone and per-app sizes where iOS reports them.
 - Search, sort, and tick several apps at once (checkbox, double-click, or Space).
 - **Bulk uninstall with safety checks:**
@@ -45,12 +54,70 @@ You do **not** need Python or any developer tools to use the installer or portab
 
 ## Connecting your iPhone
 
-1. Plug the iPhone into the PC with a USB cable.
-2. Unlock the iPhone.
-3. If asked **"Trust This Computer?"**, tap **Trust** and enter your passcode.
-4. Open iPhone App Manager (or press **F5** to refresh).
+Plug the iPhone in by USB, unlock it, and tap **Trust** if it asks "Trust This Computer?". Step-by-step instructions, and what to do if the iPhone isn't found, are in [How to use](#how-to-use).
 
-If no iPhone is found, check that Apple Devices is installed, the cable supports data, and the iPhone is unlocked and trusting this PC.
+## How to use
+
+### 1. Connect your iPhone
+
+1. Plug the iPhone into the PC with a USB cable, and unlock it.
+2. If the iPhone asks **"Trust This Computer?"**, tap **Trust** and enter your passcode.
+3. Start iPhone App Manager, or click **Refresh** (or press **F5**) if it is already open.
+
+The app shows "Reading apps from your iPhone…" while it loads the list. Keep the iPhone connected and unlocked; this usually takes a few seconds.
+
+### 2. Read the app list
+
+Installed and offloaded apps appear together in **one list**. Each row shows the app icon, its name, its bundle identifier (a technical ID such as `com.example.app`), a status and sizes.
+
+- Offloaded apps are marked **Offloaded** in the list.
+- A summary line shows how many apps are installed and offloaded, for example "12 installed · 3 offloaded". While the app is still working, it says so ("checking for offloaded apps…", "Calculating app sizes…").
+- The columns show **App size**, **Docs & Data** and **Total**. For an offloaded app, the sizes are the small placeholder left behind plus the data that iOS kept.
+- Rest the mouse pointer on an app's name for a moment to see a details card (status, bundle ID, version and, where iOS reports them, sizes and other information).
+- The sizes come from iOS, and the "Docs & Data" figure can be smaller than the one in the iPhone's Settings. A size can show "Calculating…" or "Not available" if iOS has not reported a figure.
+- Real icons are loaded in the background. Until they arrive, placeholder icons are shown.
+
+### 3. Search and sort
+
+- Type in the search box (or press **Ctrl+F**) to filter by app name or bundle ID. The summary then reads "Showing X of Y apps". Press **Esc** in the box, or click **Clear search**, to clear it.
+- Use the **Sort** button, or click a column heading (App name, App size, Docs & Data, Total), to change the order. Options include name A to Z, name Z to A, and largest or smallest sizes.
+
+### 4. Select apps
+
+- Click an app's checkbox or icon, or double-click its row, to tick it.
+- Click a row to highlight it (Ctrl+click or Shift+click for several rows, or use the arrow keys), then press **Space** to tick or untick all highlighted rows.
+- **Select All** (or **Ctrl+A** in the list) ticks every app currently shown. If you have searched, only the matching apps are ticked.
+- **Deselect All** unticks everything, including selected apps hidden by a search.
+- The **selected** counter shows how many apps are ticked. Click it to open a review list of the selected apps.
+
+### 5. Remove apps
+
+1. Tick the apps you want to remove. You can mix installed and offloaded apps.
+2. Click **Uninstall Selected**. It is greyed out while the app is loading or when no removable app is selected.
+3. A **confirmation window** lists the apps that will be removed from your iPhone (with how many are installed and how many offloaded) and warns that data on the iPhone may be permanently deleted. If you selected offloaded apps, it adds a separate notice that their retained data will be deleted.
+4. Apps that can't be removed are skipped, and the window says how many and why. Apple's own apps (`com.apple.*`) are protected and are never removed.
+5. Read the list carefully, then click **Uninstall** to go ahead, or **Cancel** to stop. Nothing is removed unless you click **Uninstall** in this window.
+
+### 6. Progress and verification
+
+- A progress window removes the apps **one at a time** and shows which one is being removed. You can't close this window while removal is running, and **Refresh** is turned off.
+- If you try to close the main window during removal, the app asks you to confirm. The app being removed may still finish, but the remaining apps will not be removed.
+- When the removals finish, the app **reloads the list from the iPhone and checks each result** against the installed apps, the offloaded apps and the Home Screen. An app that is reported as removed but is still on the iPhone is not counted as removed.
+- The final summary shows how many were **removed**, **failed**, **not attempted**, **skipped** or **not verified**. Each app's row shows its own result and, if something went wrong, the reason.
+- Apps that were not confirmed as removed stay ticked. **Nothing is retried automatically.**
+
+### If something goes wrong
+
+| What you see | What to do |
+|---|---|
+| **No iPhone connected** | Connect the iPhone with a USB cable, unlock it, then click **Refresh**. If it is already plugged in, check that the Apple Devices app can see it. |
+| **iPhone doesn't trust this computer** | Unlock the iPhone. When "Trust This Computer?" appears, tap **Trust** and enter your passcode, then click **Refresh**. |
+| **iPhone is locked** | Unlock the iPhone with your passcode, then click **Refresh**. |
+| **iPhone isn't responding** | Unplug the iPhone, plug it back in, unlock it, then click **Refresh**. |
+
+These screens have a **Try again** button.
+
+**If the iPhone disconnects, locks, or stops trusting the computer during a removal**, the app stops. The app that was being removed is reported as failed, and the remaining apps are marked **Not attempted**. Nothing further is removed. Reconnect and unlock the iPhone, click **Refresh**, and check the list before trying again. If the list can't be refreshed after a removal, the app says the results could not be double-checked.
 
 ## Uninstalling the application
 
@@ -60,7 +127,15 @@ Apple Devices is separate software and is removed separately if you no longer wa
 
 ## Portable version
 
-The release also contains a portable folder, `iPhone App Manager`. Extract it anywhere, double-click `iPhone App Manager.exe`, and keep the whole folder together (the `_internal` and `tools` folders are required). The same requirements apply, including Apple Devices.
+The portable version runs without being installed. It will be offered as a ZIP file on the project's **Releases** page once it is published.
+
+1. Install the **Apple Devices** app from the Microsoft Store if you have not already. Apple Devices and its USB drivers are **required** for the portable version too.
+2. Download the portable ZIP.
+3. Right-click the ZIP and choose **Extract All…**, then pick a folder (for example, one inside your Documents). Don't run the program from inside the ZIP.
+4. Open the extracted `iPhone App Manager` folder and double-click `iPhone App Manager.exe`. Keep the whole folder together: the `_internal` and `tools` folders are required.
+5. Connect and unlock your iPhone and follow [How to use](#how-to-use).
+
+Python and MSYS2 are **not** needed to run the packaged application. To remove the portable version, close the program and delete the folder.
 
 ## Known limitations
 
