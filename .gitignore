@@ -1,0 +1,60 @@
+# Build environment and build output (rebuilt with packaging/build.py)
+.venv/
+.venv-build/
+venv/
+env/
+build/
+dist/
+*.spec.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Release artifacts (distribute through GitHub Releases instead)
+*.exe
+*.msi
+*.zip
+
+# Logs and diagnostics (may contain device identifiers)
+*.log
+logs/
+diagnostics/
+*.crash
+*.dmp
+
+# Anything captured from a real iPhone
+*.plist
+*.sqlite
+*.db
+device-dumps/
+
+# Local settings, secrets, scratch files
+.env
+.env.*
+*.local
+local_settings.*
+secrets.*
+*.pem
+*.key
+scratch/
+tmp/
+*.tmp
+*.bak
+
+# IDE / editor / OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+.claude/
