@@ -30,7 +30,8 @@ MSYS2_RECIPES_URL = "https://github.com/msys2/MINGW-packages"
 
 
 # ------------------------------------------------------------------------------------------------
-# 1. The five MSYS2 source packages (exact versions bundled in tools\libimobiledevice)
+# 1. The source of the five components named in the notices: four MSYS2 source packages plus the upstream
+#    libimobiledevice 1.4.0 tarball (exact versions bundled in tools\libimobiledevice)
 # ------------------------------------------------------------------------------------------------
 class SourcePackage(NamedTuple):
     name: str            # MSYS2 package base name
@@ -52,9 +53,6 @@ SOURCE_PACKAGES = (
     SourcePackage("mingw-w64-ideviceinstaller", "1.1.1-2", 23061,
                   "8998367b0bdfdaf06cb8987a7db77dba231c2e6e6f87e24c6c0da6209df38a5b",
                   "decdc5acb55e115fa9e8470a713823e3279a77447677f47627788041badef299"),
-    SourcePackage("mingw-w64-libimobiledevice", "1.3.0-18", 297696,
-                  "2f8f2f56a713b4ce8a61cabbca6c1f9ba9786dcd4161ec59977876c39fee9697",
-                  "1278c89a6d8971be0da307e77a052457bc003f65b88cb8dbcd5fc1067d71ce82"),
     SourcePackage("mingw-w64-libplist", "2.7.0-4", 483879,
                   "0170254ac2a3e4fa0c88ec974a4e6d6a1e1b91d3da14d91b9b147a336c09a015",
                   "b4b269ff6460c77bd2848a824d21f1b2804d9b5a8ff57028aedd9107f383550d"),
@@ -67,13 +65,42 @@ SOURCE_PACKAGES = (
 )
 SOURCE_PACKAGE_BY_NAME = {p.name.replace("mingw-w64-", ""): p for p in SOURCE_PACKAGES}
 
-# SHA-256 of every file the build copies into tools\libimobiledevice (MSYS2 UCRT64 packages named in the notices).
+
+class UpstreamSource(NamedTuple):
+    """An upstream release tarball (no MSYS2 package, so no MSYS2 signature exists to bundle)."""
+    name: str
+    version: str
+    archive: str         # file name in packaging/third-party-sources
+    size: int
+    sha256: str          # lower case
+    shipped: bool        # True: its compiled code is in the release; False: build-time prerequisite only
+
+
+# libimobiledevice 1.4.0 is built from this tarball by packaging/build_libimobiledevice.sh (MSYS2 still has
+# 1.3.0, whose idevice_connect() cannot use a Windows network address). Upstream publishes no signature for it.
+# libtatsu is required by its configure script but nothing from it is in the compiled files (the script checks).
+UPSTREAM_SOURCES = (
+    UpstreamSource("libimobiledevice", "1.4.0", "libimobiledevice-1.4.0.tar.bz2", 714628,
+                   "23cc0077e221c7d991bd0eb02150a0d49199bcca1ddf059edccee9ffd914939d", True),
+    UpstreamSource("libtatsu", "1.0.5", "libtatsu-1.0.5.tar.bz2", 302913,
+                   "536fa228b14f156258e801a7f4d25a3a9dd91bb936bf6344e23171403c57e440", False),
+)
+UPSTREAM_SOURCE_BY_NAME = {s.name: s for s in UPSTREAM_SOURCES}
+BUILD_SCRIPT = PACKAGING / "build_libimobiledevice.sh"
+BUILD_SCRIPT_NAME = BUILD_SCRIPT.name
+
+# The two files built from the upstream tarball, kept (pinned) in packaging/third-party-binaries.
+BUILT_DIR = PACKAGING / "third-party-binaries" / "libimobiledevice-1.4.0"
+BUILT_FILES = ("libimobiledevice-1.0.dll", "ideviceinfo.exe")
+
+# SHA-256 of every file the build copies into tools\libimobiledevice: the MSYS2 UCRT64 packages named in the notices,
+# except the two BUILT_FILES, which come from BUILT_DIR (packaging/build_libimobiledevice.sh; reproducible).
 PINNED_TOOL_SHA256 = {
-    "ideviceinfo.exe": "61F8D3D9FDBD29762D303C53010FCB7CF53B3A8BFC6246790E01A34EB8263FDB",
+    "ideviceinfo.exe": "33E3F7768B13821B610C9AA31D95CE0E77E336DDFBCEAB3C3EAA622A001A58BE",
     "ideviceinstaller.exe": "B2C4E0FFE4964B14EB806DFA313478B7AA5F86A49C75E1EADE0A953F2FBA23BD",
     "libbz2-1.dll": "1790BF6473C9D48DB14C1F0EE8124142327556D281299EA2A72EE361118EE01A",
     "libcrypto-4-x64.dll": "FF5BD426835ACF70A03E6FD8BB51B60441806BF228DE608CAF4355B57F0C2340",
-    "libimobiledevice-1.0.dll": "7E57F601ED44351895D10DD1A72FED44AEA137F97ED32AF51EE5E897987A14E5",
+    "libimobiledevice-1.0.dll": "7F526085EA88DEFBAD95B5789A0BC8507F7CACBD3C05641950BA7F91AFE5DD47",
     "libimobiledevice-glue-1.0.dll": "E687690485F1F8749C62000337EFFA6F04BAF7F9A8CE56B74D7181691E291DE1",
     "liblzma-5.dll": "D97A260B8BB4F6AFFC34EC47249429240068B94BB6F7DC30C4D64DAAAFB3AC69",
     "libplist-2.0.dll": "B4FBF69FA5B0C585DAB5A466EBDA760E4CC5881B1C593585E75D9DAFADD5DC7C",
@@ -101,8 +128,9 @@ MSYS2_OTHER = (
     ("zstd", "1.5.7-2", "dual-licensed: BSD-3-Clause or GPL-2.0 (see zstd's own LICENSE and COPYING files)",
      [("zstd/LICENSE", "zstd-LICENSE.txt")], "https://github.com/facebook/zstd", ("libzstd.dll",)),
 )
-MSYS2_FIVE_FILES = ("ideviceinstaller.exe", "ideviceinfo.exe", "libimobiledevice-1.0.dll", "libplist-2.0.dll",
-                    "libimobiledevice-glue-1.0.dll", "libusbmuxd-2.0.dll")
+# Files provided by the four MSYS2 source packages named in SOURCE_PACKAGES (BUILT_FILES come from the upstream tarball).
+MSYS2_SOURCE_FILES = ("ideviceinstaller.exe", "libplist-2.0.dll", "libimobiledevice-glue-1.0.dll",
+                      "libusbmuxd-2.0.dll")
 
 
 # ------------------------------------------------------------------------------------------------
@@ -188,15 +216,23 @@ def bundle_name(app_version: str) -> str:
     return f"Third-Party-Source-Code-{app_version}.zip"
 
 
+def build_script_bytes() -> bytes:
+    """The build script exactly as bundled, with LF line endings (bash cannot run a CRLF script)."""
+    return BUILD_SCRIPT.read_bytes().replace(b"\r\n", b"\n")
+
+
 def sha256sums_text() -> str:
-    """SHA256SUMS.txt for the bundle: the five archives then the five signatures, each sorted by name."""
+    """SHA256SUMS.txt for the bundle: the four MSYS2 archives, the two upstream tarballs, the build script, then the
+    four MSYS2 signatures, each group sorted by name. (Upstream publishes no signature for its tarballs.)"""
     lines = [f"{p.sha256} *{p.archive}" for p in sorted(SOURCE_PACKAGES, key=lambda p: p.archive)]
+    lines += [f"{s.sha256} *{s.archive}" for s in sorted(UPSTREAM_SOURCES, key=lambda s: s.archive)]
+    lines.append(f"{hashlib.sha256(build_script_bytes()).hexdigest()} *{BUILD_SCRIPT_NAME}")
     lines += [f"{p.sig_sha256} *{p.signature}" for p in sorted(SOURCE_PACKAGES, key=lambda p: p.signature)]
     return "\n".join(lines) + "\n"
 
 
 def verify_source_files(sources_dir: Path = SOURCES_DIR) -> list[str]:
-    """Problems with the committed source archives and signatures (empty = all 10 match their recorded hashes)."""
+    """Problems with the committed source archives and signatures (empty = every file matches its recorded hash)."""
     problems = []
     for pkg in SOURCE_PACKAGES:
         for fname, want in ((pkg.archive, pkg.sha256), (pkg.signature, pkg.sig_sha256)):
@@ -208,8 +244,31 @@ def verify_source_files(sources_dir: Path = SOURCES_DIR) -> list[str]:
         archive = Path(sources_dir) / pkg.archive
         if archive.is_file() and archive.stat().st_size != pkg.size:
             problems.append(f"size mismatch: {pkg.archive}")
+    for src in UPSTREAM_SOURCES:
+        path = Path(sources_dir) / src.archive
+        if not path.is_file():
+            problems.append(f"missing: {src.archive}")
+            continue
+        if hashlib.sha256(path.read_bytes()).hexdigest() != src.sha256:
+            problems.append(f"hash mismatch: {src.archive}")
+        if path.stat().st_size != src.size:
+            problems.append(f"size mismatch: {src.archive}")
+    if not BUILD_SCRIPT.is_file():
+        problems.append(f"missing: {BUILD_SCRIPT_NAME}")
     if not (Path(sources_dir) / "README.txt").is_file():
         problems.append("missing: README.txt")
+    return problems
+
+
+def verify_built_files(built_dir: Path = BUILT_DIR) -> list[str]:
+    """Problems with the pinned libimobiledevice 1.4.0 build (empty = both files match their recorded hashes)."""
+    problems = []
+    for name in BUILT_FILES:
+        path = Path(built_dir) / name
+        if not path.is_file():
+            problems.append(f"missing: {name}")
+        elif hashlib.sha256(path.read_bytes()).hexdigest().upper() != PINNED_TOOL_SHA256[name]:
+            problems.append(f"hash mismatch: {name}")
     return problems
 
 
@@ -219,8 +278,9 @@ _ZIP_DATE = (1980, 1, 1, 0, 0, 0)       # fixed, so the same inputs always give 
 def make_source_bundle(out_dir: Path, app_version: str, sources_dir: Path = SOURCES_DIR) -> Path:
     """Create ``Third-Party-Source-Code-<version>.zip`` (and its ``.sha256``) in ``out_dir``.
 
-    The ten archive/signature files are stored byte-for-byte (verified against the recorded hashes first).
-    Output is deterministic: sorted entries, fixed timestamps, no compression. Returns the ZIP path.
+    The archives, signatures and upstream tarballs are stored byte-for-byte (verified against the recorded hashes
+    first), together with the script that builds libimobiledevice. Output is deterministic: sorted entries, fixed
+    timestamps, no compression. Returns the ZIP path.
     """
     problems = verify_source_files(sources_dir)
     if problems:
@@ -236,6 +296,9 @@ def make_source_bundle(out_dir: Path, app_version: str, sources_dir: Path = SOUR
     for pkg in sorted(SOURCE_PACKAGES, key=lambda p: p.archive):
         entries.append((pkg.archive, (Path(sources_dir) / pkg.archive).read_bytes()))
         entries.append((pkg.signature, (Path(sources_dir) / pkg.signature).read_bytes()))
+    for src in UPSTREAM_SOURCES:
+        entries.append((src.archive, (Path(sources_dir) / src.archive).read_bytes()))
+    entries.append((BUILD_SCRIPT_NAME, build_script_bytes()))
     # README.txt and SHA256SUMS.txt first, then the archives/signatures in name order
     entries = entries[:2] + sorted(entries[2:], key=lambda e: e[0])
     with zipfile.ZipFile(target, "w", zipfile.ZIP_STORED) as z:
@@ -300,23 +363,41 @@ def _msys2_five_entries(sp) -> list[str]:
     out += ["  Licence text  : ideviceinstaller-1.1.1-COPYING.txt (the project's own COPYING, GPL v2);",
             "                  ideviceinstaller-1.1.1-AUTHORS.txt", ""]
 
-    out += ["libimobiledevice 1.3.0-18",
-            "  MSYS2 package : mingw-w64-ucrt-x86_64-libimobiledevice",
+    lm = UPSTREAM_SOURCE_BY_NAME["libimobiledevice"]
+    lt = UPSTREAM_SOURCE_BY_NAME["libtatsu"]
+    out += [f"libimobiledevice {lm.version}",
+            "  Build         : NOT an MSYS2 binary. MSYS2 still packages libimobiledevice 1.3.0, whose",
+            "                  idevice_connect() cannot use the address of a Wi-Fi (network) device on Windows;",
+            "                  upstream fixed that in commit a172604 (2023-06-27), released in 1.4.0. These two files",
+            f"                  were built from the unmodified upstream release tarball {lm.archive} with the MSYS2",
+            "                  UCRT64 toolchain, by the script build_libimobiledevice.sh (in the source bundle,",
+            "                  section 6). No patches are applied: of the 7 patches MSYS2 carries for 1.3.0, three",
+            "                  only fix the Python/Cython bindings (not built), and the other four are already part",
+            "                  of 1.4.0 or concern socket code that moved to libimobiledevice-glue. The build is",
+            "                  reproducible (two builds in different folders gave identical files); the files'",
+            "                  SHA-256 values are pinned by the release build.",
             "  Licence       : LGPL-2.1-or-later (GNU Lesser General Public License v2.1 or later) for both files",
             "                  below. ideviceinfo is LGPL, not GPL: the licence header of tools/ideviceinfo.c is",
             "                  LGPL v2.1 or later, and the project's README says the library and utilities are",
-            "                  LGPL v2.1.",
+            "                  LGPL v2.1. All 64 source and header files compiled into the",
+            "                  two files (src/, common/ and tools/ideviceinfo.c) carry an LGPL-2.1-or-later header.",
             "                  The upstream source tree also contains a GPL v2 COPYING file and one",
             "                  GPL-2.0-or-later program, tools/idevicesetlocation.c, which is not part of this",
             "                  release.",
-            "  Copyright     : (C) 2008-2019 Nikias Bassen, Martin Szulecki, Zach C. and others (per file",
+            "  Copyright     : (C) 2008-2025 Nikias Bassen, Martin Szulecki, Zach C. and others (per file",
             "                  headers). The upstream AUTHORS file lists 21 names.",
             "  Files         : libimobiledevice-1.0.dll, ideviceinfo.exe",
-            "  Source        : https://github.com/libimobiledevice/libimobiledevice"]
-    out += src_lines("libimobiledevice", "PKGBUILD, upstream libimobiledevice-1.3.0.tar.gz and 7 MSYS2 patches, "
-                                         "001 to 007")
-    out += ["  Licence text  : libimobiledevice-1.3.0-COPYING.LESSER.txt (the project's own COPYING.LESSER);",
-            "                  libimobiledevice-1.3.0-AUTHORS.txt", ""]
+            "  Source        : https://github.com/libimobiledevice/libimobiledevice",
+            f"  Source archive: {lm.archive}",
+            f"                  https://github.com/libimobiledevice/libimobiledevice/releases/tag/{lm.version}",
+            f"                  SHA-256 {lm.sha256}",
+            "                  (upstream publishes no signature for it; the archive is stored unchanged)",
+            f"  Build-only    : libtatsu {lt.version} ({lt.archive}, SHA-256 {lt.sha256}) is needed by libimobiledevice's",
+            "                  configure script only. Neither file imports libtatsu.dll or libcurl (checked by the",
+            "                  build script), so libtatsu and curl are NOT part of this release; libtatsu's source is",
+            "                  in the source bundle only because the build needs it.",
+            f"  Licence text  : libimobiledevice-{lm.version}-COPYING.LESSER.txt (the project's own COPYING.LESSER);",
+            f"                  libimobiledevice-{lm.version}-AUTHORS.txt", ""]
 
     out += ["libimobiledevice-glue 1.3.2-1",
             "  MSYS2 package : mingw-w64-ucrt-x86_64-libimobiledevice-glue",
@@ -377,13 +458,14 @@ def build_notices(app_name: str, app_version: str, msys2_versions: dict[str, str
           "  and it is not a statement that every obligation has been met. The licence of iPhone App Manager's",
           "  own code has not been chosen yet (all rights reserved). Licence texts are the files in this folder",
           "  that are named below.", "",
-          "=" * 60, "1. Programs and libraries in tools\\libimobiledevice (from MSYS2, UCRT64 environment)",
+          "=" * 60, "1. Programs and libraries in tools\\libimobiledevice (MSYS2 UCRT64, plus libimobiledevice 1.4.0 built from upstream)",
           "=" * 60, "",
-          "These are unmodified binaries from the MSYS2 project (https://www.msys2.org). They are separate",
-          "programs/libraries that iPhone App Manager runs or loads. The build checks the SHA-256 of every file",
-          "against the values recorded for the package versions named here. The first five entries below",
-          "(ideviceinstaller, libimobiledevice, libimobiledevice-glue, libusbmuxd, libplist) have their MSYS2",
-          "source packages in the separate source bundle described in section 6.", ""]
+          "These are separate programs/libraries that iPhone App Manager runs or loads. All of them are unmodified",
+          "binaries from the MSYS2 project (https://www.msys2.org) EXCEPT libimobiledevice-1.0.dll and",
+          "ideviceinfo.exe, which were built from the unmodified upstream libimobiledevice 1.4.0 release (see its",
+          "entry). The build checks the SHA-256 of every file against the values recorded for the versions named",
+          "here. The first five entries below (ideviceinstaller, libimobiledevice, libimobiledevice-glue,",
+          "libusbmuxd, libplist) have their source in the separate source bundle described in section 6.", ""]
     L += _msys2_five_entries(None)
     L += ["Other MSYS2 libraries (not covered by the source bundle in section 6)", "-" * 66, ""]
     for name, version, licence, files, url, provides in MSYS2_OTHER:
@@ -500,13 +582,21 @@ def build_notices(app_name: str, app_version: str, msys2_versions: dict[str, str
           "  Licence text  : innosetup-6.7.3-license.txt (binary redistributions must retain the copyright notice",
           "                  and web site addresses in the installer, for example in the About box)", "",
           "=" * 60, "6. Source code (separate download)", "=" * 60, "",
-          f"The separate file {bundle_name(app_version)} accompanies this release. It holds the MSYS2 source",
-          "packages for the FIVE components named in section 1 (ideviceinstaller, libimobiledevice,",
-          "libimobiledevice-glue, libusbmuxd, libplist) and nothing else. It does not cover the other",
-          "components in this file. The archives are stored unchanged; their SHA-256 values are:", ""]
+          f"The separate file {bundle_name(app_version)} accompanies this release. It holds the source of the",
+          "FIVE components named in section 1 (ideviceinstaller, libimobiledevice, libimobiledevice-glue,",
+          "libusbmuxd, libplist): four MSYS2 source packages and the upstream libimobiledevice 1.4.0 tarball,",
+          "together with build_libimobiledevice.sh, the script that builds libimobiledevice from that tarball. As a",
+          "build-time prerequisite of that script it also holds the libtatsu source tarball; no libtatsu code is in",
+          "the release. It contains nothing else and does not cover the other components in this file. The",
+          "archives are stored unchanged; their SHA-256 values are:", ""]
     for p in sorted(SOURCE_PACKAGES, key=lambda p: p.archive):
         L.append(f"  {p.sha256}  {p.archive}")
-    L += ["", f"Same packages online: {MSYS2_SOURCES_URL}   Recipes: {MSYS2_RECIPES_URL}", "",
+    for s in sorted(UPSTREAM_SOURCES, key=lambda s: s.archive):
+        L.append(f"  {s.sha256}  {s.archive}")
+    L += ["", f"MSYS2 packages online: {MSYS2_SOURCES_URL}   Recipes: {MSYS2_RECIPES_URL}",
+          "libimobiledevice releases: https://github.com/libimobiledevice/libimobiledevice/releases",
+          "(build_libimobiledevice.sh is included in the bundle; its SHA-256 is listed in the bundle's SHA256SUMS.txt)",
+          "",
           "=" * 60, "7. Not included", "=" * 60, "",
           "Apple Mobile Device Support (needed to talk to an iPhone over USB) is NOT included; it is installed by",
           "Apple's 'Apple Devices' app from the Microsoft Store."]

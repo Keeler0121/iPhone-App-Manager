@@ -245,6 +245,121 @@ class Pill(tk.Canvas, _Scaled):
         self.create_text(x + lead, h / 2, text=s["text"], font=self._font, fill=s["fg"], anchor="w")
 
 
+class SegmentedControl(tk.Canvas, _Scaled):
+    """A small bar of mutually exclusive options (the chosen one in orange), for the slate header."""
+
+    def __init__(self, master: tk.Misc, *, options: Sequence[tuple[str, object]], value: object,
+                 command: Optional[Callable[[object], None]], fonts: Fonts, scale: float, bg: str,
+                 height: int = 30) -> None:
+        tk.Canvas.__init__(self, master, bg=bg, highlightthickness=0, bd=0, takefocus=1)
+        self.scale = scale
+        self._fonts = fonts
+        self._segments = list(options)
+        self._value = value
+        self._command = command
+        self._height_px = self.p(height)
+        self._enabled = True
+        self._focus = False
+        self._hover: Optional[int] = None
+        self._edges: list[tuple[int, int]] = []
+        self.bind("<Button-1>", self._on_click)
+        self.bind("<Motion>", self._on_motion)
+        self.bind("<Leave>", lambda _e: self._set_hover(None))
+        self.bind("<FocusIn>", lambda _e: self._set_focus(True))
+        self.bind("<FocusOut>", lambda _e: self._set_focus(False))
+        self.bind("<Left>", lambda _e: self._step(-1))
+        self.bind("<Right>", lambda _e: self._step(1))
+        self._draw()
+
+    @property
+    def value(self) -> object:
+        return self._value
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    def set_value(self, value: object) -> None:
+        """Show ``value`` as chosen without calling the command (used to undo a refused change)."""
+        if value != self._value:
+            self._value = value
+            self._draw()
+
+    def set_enabled(self, enabled: bool) -> None:
+        if enabled != self._enabled:
+            self._enabled = enabled
+            self.configure(takefocus=1 if enabled else 0)
+            self._draw()
+
+    def select(self, value: object) -> None:
+        """The user chose ``value``. Does nothing while disabled or when it is already chosen."""
+        if not self._enabled or value == self._value or value not in [v for _t, v in self._segments]:
+            return
+        self._value = value
+        self._draw()
+        if self._command:
+            self._command(value)
+
+    # events
+    def _index_at(self, x: int) -> Optional[int]:
+        for i, (left, right) in enumerate(self._edges):
+            if left <= x < right:
+                return i
+        return None
+
+    def _on_click(self, e: tk.Event) -> None:
+        self.focus_set()
+        i = self._index_at(e.x)
+        if i is not None:
+            self.select(self._segments[i][1])
+
+    def _on_motion(self, e: tk.Event) -> None:
+        self._set_hover(self._index_at(e.x) if self._enabled else None)
+
+    def _set_hover(self, index: Optional[int]) -> None:
+        if index != self._hover:
+            self._hover = index
+            self._draw()
+
+    def _set_focus(self, focus: bool) -> None:
+        self._focus = focus
+        self._draw()
+
+    def _step(self, step: int) -> str:
+        values = [v for _t, v in self._segments]
+        i = values.index(self._value) + step
+        if 0 <= i < len(values):
+            self.select(values[i])
+        return "break"
+
+    def _draw(self) -> None:
+        f, h = self._fonts, self._height_px
+        pad, inset = self.p(14), self.p(3)
+        widths = [f.small_bold.measure(text) + 2 * pad for text, _v in self._segments]
+        total = sum(widths) + 2 * inset
+        border = Colors.ORANGE if self._focus and self._enabled else Colors.SLATE_600
+        frame = graphics.rounded_box(self, total, h, h / 2, Colors.SLATE_700, border, max(1.0, self.scale))
+        self.delete("all")
+        self._images = [frame]
+        self.configure(width=total, height=h, cursor="hand2" if self._enabled else "arrow")
+        self.create_image(0, 0, anchor="nw", image=frame)
+        x = inset
+        self._edges = []
+        for i, ((text, value), w) in enumerate(zip(self._segments, widths)):
+            chosen = value == self._value
+            if chosen:
+                fill = Colors.ORANGE if self._enabled else Colors.SLATE_500
+                seg = graphics.rounded_box(self, w, h - 2 * inset, (h - 2 * inset) / 2, fill)
+                self._images.append(seg)
+                self.create_image(x, inset, anchor="nw", image=seg)
+                fg = Colors.WHITE
+            else:
+                fg = (Colors.WHITE if self._hover == i else Colors.SLATE_300) if self._enabled else Colors.SLATE_500
+            self.create_text(x + w / 2, h / 2, text=text, font=f.small_bold, fill=fg, anchor="center")
+            self._edges.append((x, x + w))
+            x += w
+
+
 class IconBadge(tk.Canvas, _Scaled):
     """Large circular icon used in the empty / error states."""
 
@@ -434,7 +549,8 @@ class _Columns:
 
 
 # Sortable header columns (key -> header label)
-SORT_COLUMNS = {"name": "APP NAME", "app": "APP SIZE", "data": "DOCS & DATA*", "total": "TOTAL*"}
+SORT_COLUMNS = {"name": "APP NAME", "status": "STATUS", "app": "APP SIZE", "data": "DOCS & DATA*",
+                "total": "TOTAL*"}
 
 
 class AppList(tk.Frame, _Scaled):
@@ -667,7 +783,7 @@ class AppList(tk.Frame, _Scaled):
         c.create_line(0, h - 1, width, h - 1, fill=Colors.SLATE_200)
         y = h / 2
         columns = [("name", cols.name_x, None), (None, cols.bundle_x, "BUNDLE IDENTIFIER"),
-                   (None, cols.status_x, "STATUS"), (None, cols.version_x, "VERSION"),
+                   ("status", cols.status_x, None), (None, cols.version_x, "VERSION"),
                    ("app", cols.app_x, None), ("data", cols.data_x, None), ("total", cols.total_x, None)]
         for key, x, plain in columns:
             text = SORT_COLUMNS[key] if key else plain
@@ -857,6 +973,7 @@ class AppList(tk.Frame, _Scaled):
             return None
         x = self.header.canvasx(x)
         spans = {"name": (cols.name_x - self.p(8), cols.bundle_x),
+                 "status": (cols.status_x - self.p(8), cols.version_x),
                  "app": (cols.app_x - self.p(8), cols.data_x),
                  "data": (cols.data_x - self.p(8), cols.total_x),
                  "total": (cols.total_x - self.p(8), cols.total_x + cols.total_w)}

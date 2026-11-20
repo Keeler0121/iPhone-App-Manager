@@ -1,0 +1,9 @@
+libimobiledevice 1.4.0 build for iPhone App Manager
+libimobiledevice tarball : libimobiledevice-1.4.0.tar.bz2  sha256 23cc0077e221c7d991bd0eb02150a0d49199bcca1ddf059edccee9ffd914939d
+libtatsu tarball         : libtatsu-1.0.5.tar.bz2  sha256 536fa228b14f156258e801a7f4d25a3a9dd91bb936bf6344e23171403c57e440  (build-time only, not shipped)
+gcc                      : gcc.exe (Rev7, Built by MSYS2 project) 16.2.0
+MSYS2 packages           : mingw-w64-ucrt-x86_64-gcc 16.2.0-7;mingw-w64-ucrt-x86_64-libplist 2.7.0-4;mingw-w64-ucrt-x86_64-libimobiledevice-glue 1.3.2-1;mingw-w64-ucrt-x86_64-libusbmuxd 2.1.1-1;mingw-w64-ucrt-x86_64-openssl 4.1.0-1;
+configure                : --without-cython --disable-static --enable-shared (make install-strip)
+output sha256:
+7f526085ea88defbad95b5789a0bc8507f7cacbd3c05641950ba7f91afe5dd47 *libimobiledevice-1.0.dll
+33e3f7768b13821b610c9aa31d95ce0e77e336ddfbceab3c3eaa622a001a58be *ideviceinfo.exe

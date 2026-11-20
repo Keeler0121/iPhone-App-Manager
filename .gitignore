@@ -23,6 +23,12 @@ htmlcov/
 *.msi
 *.zip
 
+# ...except the pinned libimobiledevice build the release bundles (see packaging/build_libimobiledevice.sh and
+# the SHA-256 pins in packaging/third_party.py). These are inputs to the build, not build output.
+!packaging/third-party-binaries/
+!packaging/third-party-binaries/**/
+!packaging/third-party-binaries/**/*.exe
+
 # Logs and diagnostics (may contain device identifiers)
 *.log
 logs/

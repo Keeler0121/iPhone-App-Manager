@@ -4,6 +4,10 @@ Runs as a *separate process* (``python -I inventory_helper.py <bin-dir>``) so a 
 native libimobiledevice / libplist DLLs can never crash the main application.
 Uses only the Python standard library.
 
+Usage:  inventory_helper.py <bin-dir> [--udid <UDID> --connection usb|wifi]
+Without --udid the original behaviour is kept (the first USB iPhone). With it the helper uses exactly
+that iPhone: over USB (USB devices only) or over Wi-Fi (network devices only, never USB).
+
 Read-only by construction - the only device calls declared are:
   * instproxy_browse          - list apps. With ShowPlaceholders=True iOS also lists offloaded
                                 apps and marks them IsDemotedApp=True (the authoritative source).
@@ -34,6 +38,31 @@ from typing import Any, Optional
 EXIT_NO_DEVICE = 2
 EXIT_SERVICE = 3
 EXIT_LIBRARY = 4
+
+# libimobiledevice idevice_options. USB and Wi-Fi are used one at a time, never combined, so a
+# helper started for one connection can never end up on the other.
+LOOKUP_USBMUX = 1 << 1
+LOOKUP_NETWORK = 1 << 2
+_UDID_CHARS = set("0123456789abcdefABCDEF-")
+
+
+def parse_target(extra: list[str]) -> tuple[Optional[str], int]:
+    """(udid, lookup option) from the optional ``--udid U --connection usb|wifi`` arguments."""
+    udid, connection = None, "usb"
+    it = iter(extra)
+    for flag in it:
+        value = next(it, None)
+        if flag == "--udid" and value is not None:
+            udid = value
+        elif flag == "--connection" and value in ("usb", "wifi"):
+            connection = value
+        else:
+            raise ValueError(f"unexpected argument: {flag}")
+    if udid is None and connection != "usb":
+        raise ValueError("--connection needs --udid")
+    if udid is not None and not (8 <= len(udid) <= 63 and udid[0] != "-" and set(udid) <= _UDID_CHARS):
+        raise ValueError("invalid device identifier")
+    return udid, LOOKUP_NETWORK if connection == "wifi" else LOOKUP_USBMUX
 
 _WIDGET_OR_CONTAINER_KEYS = {"iconLists", "webClipURL", "widgetIdentifier", "elementType", "elements"}
 
@@ -114,7 +143,9 @@ class ServiceError(Exception):
 
 
 class Device:
-    def __init__(self, bin_dir: str) -> None:
+    def __init__(self, bin_dir: str, udid: Optional[str] = None, lookup: int = LOOKUP_USBMUX) -> None:
+        self._udid = udid
+        self._lookup = lookup
         os.add_dll_directory(bin_dir)
         imd = ctypes.CDLL(os.path.join(bin_dir, "libimobiledevice-1.0.dll"))
         pl = ctypes.CDLL(os.path.join(bin_dir, "libplist-2.0.dll"))
@@ -126,6 +157,7 @@ class Device:
             (pl.plist_to_xml, [vp, ctypes.POINTER(vp), ctypes.POINTER(ctypes.c_uint32)], i),
             (pl.plist_mem_free, [vp], None), (pl.plist_free, [vp], None),
             (imd.idevice_new, [ctypes.POINTER(vp), cp], i), (imd.idevice_free, [vp], i),
+            (imd.idevice_new_with_options, [ctypes.POINTER(vp), cp, i], i),
             (imd.instproxy_client_start_service, [vp, ctypes.POINTER(vp), cp], i),
             (imd.instproxy_browse, [vp, vp, ctypes.POINTER(vp)], i),
             (imd.instproxy_client_free, [vp], i),
@@ -138,7 +170,11 @@ class Device:
         self.device = vp()
 
     def connect(self) -> None:
-        err = self.imd.idevice_new(ctypes.byref(self.device), None)
+        if self._udid is None:           # original behaviour: the first USB iPhone
+            err = self.imd.idevice_new(ctypes.byref(self.device), None)
+        else:                            # exactly this iPhone, over exactly this connection
+            err = self.imd.idevice_new_with_options(ctypes.byref(self.device), self._udid.encode("ascii"),
+                                                    self._lookup)
         if err != 0:
             raise ConnectionError(EXIT_NO_DEVICE, f"No iPhone found (idevice error {err}).")
 
@@ -203,21 +239,46 @@ class Device:
 
 
 # ====================================================================== main
+def _report(message: str) -> None:
+    """Write a diagnostic to stderr - and never raise.
+
+    The packaged app is a windowed (no-console) program. Started without a stderr handle (for example by hand,
+    outside the app, which always pipes it), ``sys.stderr`` is None. Reporting an error must not itself fail,
+    or the second exception hides the real cause.
+    """
+    stream = sys.stderr
+    if stream is None:
+        return
+    try:
+        stream.write(message)
+    except (OSError, ValueError):
+        pass
+
+
 def _emit(obj: dict) -> None:
     sys.stdout.write(json.dumps(obj) + "\n")
     sys.stdout.flush()
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        sys.stderr.write("usage: inventory_helper.py <libimobiledevice-bin-dir>\n")
+    if len(argv) < 2:
+        _report("usage: inventory_helper.py <libimobiledevice-bin-dir> "
+                "[--udid UDID --connection usb|wifi]\n")
         return 1
     try:
-        device = Device(argv[1])
-    except OSError as exc:
-        sys.stderr.write(f"Could not load libimobiledevice: {exc}\n")
+        udid, lookup = parse_target(argv[2:])
+    except ValueError as exc:
+        _report(f"inventory_helper.py: {exc}\n")
+        return 1
+    try:
+        device = Device(argv[1], udid, lookup)
+    except OSError as exc:                  # includes FileNotFoundError for a missing folder
+        _report(f"Could not load libimobiledevice: {exc}\n")
         return EXIT_LIBRARY
     try:
+        if sys.stdout is None:              # no-console build started without a stdout handle: nowhere to send results
+            _report("inventory_helper.py: there is no standard output to write the results to\n")
+            return 1
         device.connect()
         # 1) Offloaded apps - iOS's own IsDemotedApp flag, including App Library-only apps (fast).
         try:
@@ -247,7 +308,7 @@ def main(argv: list[str]) -> int:
         return 0
     except ConnectionError as exc:
         code, message = exc.args
-        sys.stderr.write(message + "\n")
+        _report(message + "\n")
         return code
     except OSError:
         return 0  # the app stopped listening (broken pipe)

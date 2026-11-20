@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import BinaryIO, Callable, Optional, Sequence
 
 from . import config
+from .connection import ConnectionType, DeviceTarget
 
 HELPER_SCRIPT = Path(__file__).with_name("icon_helper.py")
 
@@ -25,6 +26,13 @@ _EXIT_MESSAGES = {
     3: "iPhone locked or not trusted",
     4: "libimobiledevice could not be loaded",
 }
+
+
+def exit_message(code: Optional[int], target: Optional[DeviceTarget], default: str) -> str:
+    """Why a helper stopped, worded for the connection it was using."""
+    if code == 2 and target is not None and target.connection is ConnectionType.WIFI:
+        return "iPhone not reachable over Wi-Fi"
+    return _EXIT_MESSAGES.get(code, default) if code is not None else default
 
 
 @dataclass
@@ -47,15 +55,18 @@ def _python_executable() -> str:
 ICON_HELPER_FLAG = "--icon-helper"
 
 
-def helper_command(size: int, frozen: bool = config.IS_FROZEN) -> list[str]:
+def helper_command(size: int, frozen: bool = config.IS_FROZEN, *,
+                   target: Optional[DeviceTarget] = None) -> list[str]:
     """Command for the icon helper process.
 
     Packaged app: the .exe re-launches itself in helper mode (there is no Python interpreter).
-    From source: run icon_helper.py with Python in isolated mode.
+    From source: run icon_helper.py with Python in isolated mode. With a ``target`` the helper
+    is told exactly which iPhone and connection to use.
     """
+    extra = target.helper_args() if target is not None else []
     if frozen:
-        return [sys.executable, ICON_HELPER_FLAG, str(config.LIBIMOBILEDEVICE_BIN), str(size)]
-    return [_python_executable(), "-I", str(HELPER_SCRIPT), str(config.LIBIMOBILEDEVICE_BIN), str(size)]
+        return [sys.executable, ICON_HELPER_FLAG, str(config.LIBIMOBILEDEVICE_BIN), str(size), *extra]
+    return [_python_executable(), "-I", str(HELPER_SCRIPT), str(config.LIBIMOBILEDEVICE_BIN), str(size), *extra]
 
 
 def _read_exact(stream: BinaryIO, n: int) -> Optional[bytes]:
@@ -74,6 +85,7 @@ def fetch_icons(
     on_icon: Callable[[str, bytes], None],
     cancel: threading.Event,
     *,
+    target: Optional[DeviceTarget] = None,
     command: Optional[list[str]] = None,
     total_timeout: Optional[float] = None,
     idle_timeout: float = config.ICON_IDLE_TIMEOUT_SECONDS,
@@ -91,7 +103,7 @@ def fetch_icons(
 
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     try:
-        proc = subprocess.Popen(command or helper_command(size), stdin=subprocess.PIPE,
+        proc = subprocess.Popen(command or helper_command(size, target=target), stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=flags)
     except OSError as exc:
         result.error = f"Could not start icon helper: {exc}"
@@ -173,5 +185,5 @@ def fetch_icons(
     elif timed_out[0]:
         result.error = "timed out"
     elif not finished:
-        result.error = _EXIT_MESSAGES.get(proc.returncode, "icon helper stopped unexpectedly")
+        result.error = exit_message(proc.returncode, target, "icon helper stopped unexpectedly")
     return result

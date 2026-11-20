@@ -64,6 +64,61 @@ class HelperLaunchTests(unittest.TestCase):
         self.assertEqual(main.HELPER_MODES, {"--icon-helper": "icon_helper", "--inventory-helper": "inventory_helper"})
 
 
+class HelperWithoutStandardStreamsTests(unittest.TestCase):
+    """The packaged app is a windowed (no-console) program: started without standard handles, sys.stdin, sys.stdout
+    and sys.stderr are None. Reporting an error must not raise a second exception (an AttributeError on None.write
+    hid the real cause and, in the packaged exe, ended in an unhandled-exception dialog)."""
+
+    BAD_DIR = r"C:\no\such\dir"                       # os.add_dll_directory raises FileNotFoundError for this
+
+    def run_with_streams(self, main, argv, *, stdin=None, stdout=None, stderr=None):
+        import contextlib
+        saved = sys.stdin, sys.stdout, sys.stderr
+        sys.stdin, sys.stdout, sys.stderr = stdin, stdout, stderr
+        try:
+            return main(argv)
+        finally:
+            sys.stdin, sys.stdout, sys.stderr = saved
+
+    def helpers(self):
+        from iphone_app_manager import icon_helper, inventory_helper
+        return (("inventory", inventory_helper.main, ["inventory_helper.py", self.BAD_DIR]),
+                ("icon", icon_helper.main, ["icon_helper.py", self.BAD_DIR, "60"]))
+
+    def test_missing_library_folder_returns_exit_4_with_no_standard_streams_at_all(self):
+        for name, main, argv in self.helpers():
+            self.assertEqual(self.run_with_streams(main, argv), 4, name)
+
+    def test_usage_and_argument_errors_return_exit_1_with_no_stderr(self):
+        from iphone_app_manager import icon_helper, inventory_helper
+        self.assertEqual(self.run_with_streams(inventory_helper.main, ["inventory_helper.py"]), 1)
+        self.assertEqual(self.run_with_streams(icon_helper.main, ["icon_helper.py", "x"]), 1)
+        self.assertEqual(self.run_with_streams(inventory_helper.main,
+                                               ["inventory_helper.py", self.BAD_DIR, "--connection", "wifi"]), 1)
+
+    def test_a_stderr_that_raises_does_not_hide_the_exit_code(self):
+        class Broken:
+            def write(self, _text):
+                raise OSError("handle closed")
+        for name, main, argv in self.helpers():
+            self.assertEqual(self.run_with_streams(main, argv, stderr=Broken()), 4, name)
+
+    def test_the_real_cause_is_still_reported_when_stderr_exists(self):
+        import io
+        for name, main, argv in self.helpers():
+            err = io.StringIO()
+            self.assertEqual(self.run_with_streams(main, argv, stderr=err), 4, name)
+            self.assertIn("Could not load libimobiledevice", err.getvalue(), name)
+            self.assertIn("The system cannot find the path specified", err.getvalue(), name)   # the FileNotFoundError text
+            self.assertIn(self.BAD_DIR.replace("\\", "\\\\"), err.getvalue(), name)
+
+    def test_helpers_never_write_to_sys_stderr_directly(self):
+        for name in ("inventory_helper.py", "icon_helper.py"):
+            source = (ROOT / "iphone_app_manager" / name).read_text(encoding="utf-8")
+            self.assertNotIn("sys.stderr.write", source, name)
+            self.assertIn("def _report(", source, name)
+
+
 class BuildScriptTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -71,13 +126,17 @@ class BuildScriptTests(unittest.TestCase):
 
     def test_every_bundled_file_has_a_licence_entry(self):
         import third_party
-        provided = list(third_party.MSYS2_FIVE_FILES) + [f for entry in third_party.MSYS2_OTHER for f in entry[5]]
+        provided = (list(third_party.MSYS2_SOURCE_FILES) + list(third_party.BUILT_FILES) +
+                    [f for entry in third_party.MSYS2_OTHER for f in entry[5]])
         self.assertEqual(sorted(provided), sorted(self.build.TOOLS + self.build.DLLS))
 
     @unittest.skipUnless(config.MSYS2_BIN.is_dir(), "MSYS2 not installed")
-    def test_bundle_list_exists_in_msys2(self):
+    def test_every_bundled_file_exists_where_the_build_takes_it_from(self):
+        import third_party
         for name in self.build.TOOLS + self.build.DLLS:
-            self.assertTrue((config.MSYS2_BIN / name).is_file(), name)
+            self.assertTrue(self.build.tool_source(name).is_file(), name)
+            if name not in third_party.BUILT_FILES:                       # all others are MSYS2 package files
+                self.assertTrue((config.MSYS2_BIN / name).is_file(), name)
 
     def test_icon_file_format(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -106,7 +165,7 @@ class BuiltReleaseTests(unittest.TestCase):
         licenses = APP_DIR / "licenses"
         if (licenses / "python-3.12.10-LICENSE.txt").is_file():              # built with the corrected notices
             names = ("THIRD-PARTY-NOTICES.txt", "python-3.12.10-LICENSE.txt", "tcltk-8.6.15-license.terms.txt",
-                     "ideviceinstaller-1.1.1-COPYING.txt", "libimobiledevice-1.3.0-COPYING.LESSER.txt",
+                     "ideviceinstaller-1.1.1-COPYING.txt", "libimobiledevice-1.4.0-COPYING.LESSER.txt",
                      "openssl-LICENSE.txt")
         else:                                                              # release built before that change
             names = ("THIRD-PARTY-NOTICES.txt", "python-LICENSE.txt", "tcltk-license.terms.txt",
@@ -117,12 +176,23 @@ class BuiltReleaseTests(unittest.TestCase):
         self.assertTrue((APP_DIR / "README.txt").is_file())
         self.assertTrue((APP_DIR / "_internal").is_dir())
 
-    def test_bundled_tools_are_byte_identical_to_msys2(self):
+    def test_bundled_tools_are_byte_identical_to_their_sources(self):
+        """Every bundled file is the MSYS2 package's file, except the two built from upstream libimobiledevice 1.4.0
+        (which are the pinned files in packaging/third-party-binaries)."""
         if not config.MSYS2_BIN.is_dir():
             self.skipTest("MSYS2 not installed")
         tools = APP_DIR / config.BUNDLED_TOOLS_SUBDIR
         for name in self.build.TOOLS + self.build.DLLS:
-            self.assertEqual((tools / name).read_bytes(), (config.MSYS2_BIN / name).read_bytes(), name)
+            self.assertEqual((tools / name).read_bytes(), self.build.tool_source(name).read_bytes(), name)
+
+    def test_bundled_ideviceinfo_and_library_are_libimobiledevice_1_4_0_without_libtatsu_or_curl(self):
+        tools = APP_DIR / config.BUNDLED_TOOLS_SUBDIR
+        r = subprocess.run([str(tools / "ideviceinfo.exe"), "--version"], capture_output=True, timeout=30,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn(b"ideviceinfo 1.4.0", r.stdout)
+        names = {p.name.lower() for p in tools.iterdir()}
+        self.assertFalse([n for n in names if any(x in n for x in ("tatsu", "curl", "nghttp", "ngtcp2"))])
 
     def test_packaged_exe_helper_modes(self):
         flags = subprocess.CREATE_NO_WINDOW
@@ -133,6 +203,21 @@ class BuiltReleaseTests(unittest.TestCase):
         r = subprocess.run([str(EXE), "--icon-helper"], capture_output=True, timeout=60, creationflags=flags,
                            stdin=subprocess.DEVNULL)
         self.assertEqual(r.returncode, 1)
+
+    def test_packaged_exe_helpers_survive_having_no_standard_handles(self):
+        """The failing case from the fresh-extraction test: a windowed exe started with NO std handles (so sys.stderr is
+        None) and a missing library folder. It must exit 4 - not raise, and not stop on an error dialog (a hang here
+        shows up as a timeout)."""
+        for mode, extra in (("--inventory-helper", []), ("--icon-helper", ["60"])):
+            args = [str(EXE), mode, r"C:\no\such\dir"] if mode == "--inventory-helper" else \
+                [str(EXE), mode, r"C:\no\such\dir", "60"]
+            proc = subprocess.Popen(args, creationflags=subprocess.DETACHED_PROCESS, close_fds=True)
+            try:
+                code = proc.wait(timeout=45)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                self.fail(f"{mode} did not exit within 45 seconds (an error dialog is probably waiting)")
+            self.assertEqual(code, 4, mode)
 
     def test_bundled_tool_runs(self):
         tools = APP_DIR / config.BUNDLED_TOOLS_SUBDIR

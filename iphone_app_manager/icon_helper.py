@@ -8,6 +8,10 @@ Safety: the ONLY SpringBoard function used is ``sbservices_get_icon_pngdata``, w
 reads an app's Home Screen icon. Nothing that changes the iPhone (for example the Home
 Screen layout) is declared or called. No files are written; icons go to stdout only.
 
+Usage:  icon_helper.py <bin-dir> <size> [--udid <UDID> --connection usb|wifi]
+Without --udid the original behaviour is kept (the first USB iPhone). With it the helper uses exactly
+that iPhone: over USB (USB devices only) or over Wi-Fi (network devices only, never USB).
+
 Protocol
   stdin : bundle identifiers, one per line (UTF-8), then EOF.
   stdout: a stream of binary records:
@@ -28,6 +32,31 @@ import zlib
 EXIT_NO_DEVICE = 2
 EXIT_SERVICE = 3
 EXIT_LIBRARY = 4
+
+# libimobiledevice idevice_options. USB and Wi-Fi are used one at a time, never combined, so a
+# helper started for one connection can never end up on the other.
+LOOKUP_USBMUX = 1 << 1
+LOOKUP_NETWORK = 1 << 2
+_UDID_CHARS = set("0123456789abcdefABCDEF-")
+
+
+def parse_target(extra: list[str]) -> tuple[str | None, int]:
+    """(udid, lookup option) from the optional ``--udid U --connection usb|wifi`` arguments."""
+    udid, connection = None, "usb"
+    it = iter(extra)
+    for flag in it:
+        value = next(it, None)
+        if flag == "--udid" and value is not None:
+            udid = value
+        elif flag == "--connection" and value in ("usb", "wifi"):
+            connection = value
+        else:
+            raise ValueError(f"unexpected argument: {flag}")
+    if udid is None and connection != "usb":
+        raise ValueError("--connection needs --udid")
+    if udid is not None and not (8 <= len(udid) <= 63 and udid[0] != "-" and set(udid) <= _UDID_CHARS):
+        raise ValueError("invalid device identifier")
+    return udid, LOOKUP_NETWORK if connection == "wifi" else LOOKUP_USBMUX
 
 
 # ====================================================================== PNG decode / resize / encode
@@ -189,12 +218,15 @@ def thumbnail(png: bytes, size: int) -> bytes:
 class SpringBoardIcons:
     """Minimal ctypes binding: connect, read icon PNGs, disconnect. Nothing else."""
 
-    def __init__(self, bin_dir: str) -> None:
+    def __init__(self, bin_dir: str, udid: str | None = None, lookup: int = LOOKUP_USBMUX) -> None:
+        self._udid = udid
+        self._lookup = lookup
         os.add_dll_directory(bin_dir)
         lib = ctypes.CDLL(os.path.join(bin_dir, "libimobiledevice-1.0.dll"))
         self._crt = ctypes.CDLL("ucrtbase")  # the MSYS2 UCRT64 build allocates with the UCRT heap
         vp = ctypes.c_void_p
         lib.idevice_new.argtypes = [ctypes.POINTER(vp), ctypes.c_char_p]
+        lib.idevice_new_with_options.argtypes = [ctypes.POINTER(vp), ctypes.c_char_p, ctypes.c_int]
         lib.idevice_free.argtypes = [vp]
         lib.sbservices_client_start_service.argtypes = [vp, ctypes.POINTER(vp), ctypes.c_char_p]
         lib.sbservices_client_free.argtypes = [vp]
@@ -206,7 +238,11 @@ class SpringBoardIcons:
         self._client = vp()
 
     def connect(self) -> None:
-        err = self._lib.idevice_new(ctypes.byref(self._device), None)
+        if self._udid is None:           # original behaviour: the first USB iPhone
+            err = self._lib.idevice_new(ctypes.byref(self._device), None)
+        else:                            # exactly this iPhone, over exactly this connection
+            err = self._lib.idevice_new_with_options(ctypes.byref(self._device), self._udid.encode("ascii"),
+                                                     self._lookup)
         if err != 0:
             raise ConnectionError(EXIT_NO_DEVICE, f"No iPhone found (idevice error {err}).")
         err = self._lib.sbservices_client_start_service(self._device, ctypes.byref(self._client),
@@ -237,20 +273,47 @@ class SpringBoardIcons:
 
 
 # ====================================================================== main
+def _report(message: str) -> None:
+    """Write a diagnostic to stderr - and never raise.
+
+    The packaged app is a windowed (no-console) program. Started without a stderr handle (for example by hand,
+    outside the app, which always pipes it), ``sys.stderr`` is None. Reporting an error must not itself fail,
+    or the second exception hides the real cause.
+    """
+    stream = sys.stderr
+    if stream is None:
+        return
+    try:
+        stream.write(message)
+    except (OSError, ValueError):
+        pass
+
+
 def main(argv: list[str]) -> int:
-    if len(argv) != 3:
-        sys.stderr.write("usage: icon_helper.py <libimobiledevice-bin-dir> <size>\n")
+    if len(argv) < 3:
+        _report("usage: icon_helper.py <libimobiledevice-bin-dir> <size> "
+                "[--udid UDID --connection usb|wifi]\n")
+        return 1
+    try:
+        udid, lookup = parse_target(argv[3:])
+    except ValueError as exc:
+        _report(f"icon_helper.py: {exc}\n")
         return 1
     bin_dir, size = argv[1], int(argv[2])
-    out = sys.stdout.buffer
-    bundle_ids = [line.strip() for line in sys.stdin.buffer.read().decode("utf-8").splitlines() if line.strip()]
+    # The app always pipes stdin and stdout. A no-console build started without those handles has None for them.
+    out = sys.stdout.buffer if sys.stdout is not None else None
+    raw_ids = sys.stdin.buffer.read() if sys.stdin is not None else b""
+    bundle_ids = [line.strip() for line in raw_ids.decode("utf-8").splitlines() if line.strip()]
 
     try:
-        springboard = SpringBoardIcons(bin_dir)
-    except OSError as exc:
-        sys.stderr.write(f"Could not load libimobiledevice: {exc}\n")
+        springboard = SpringBoardIcons(bin_dir, udid, lookup)
+    except OSError as exc:                  # includes FileNotFoundError for a missing folder
+        _report(f"Could not load libimobiledevice: {exc}\n")
         return EXIT_LIBRARY
     try:
+        if out is None:                     # nowhere to send the icons
+            _report("icon_helper.py: there is no standard output to write the icons to\n")
+            return 1
         springboard.connect()
         for bundle_id in bundle_ids:
             ident = bundle_id.encode("utf-8")
@@ -259,7 +322,7 @@ def main(argv: list[str]) -> int:
                 try:
                     png = thumbnail(png, size)
                 except (PngError, zlib.error, struct.error, ValueError) as exc:
-                    sys.stderr.write(f"{bundle_id}: {exc}\n")
+                    _report(f"{bundle_id}: {exc}\n")
                     err = -100
             if err:
                 out.write(b"F" + struct.pack(">Hi", len(ident), err) + ident)
@@ -271,7 +334,7 @@ def main(argv: list[str]) -> int:
         return 0
     except ConnectionError as exc:
         code, message = exc.args
-        sys.stderr.write(message + "\n")
+        _report(message + "\n")
         return code
     except OSError:
         return 0  # the app stopped listening (e.g. Refresh or exit) - broken pipe

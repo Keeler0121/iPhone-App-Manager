@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import config
-from .app_icons import _python_executable
+from .app_icons import _python_executable, exit_message
+from .connection import DeviceTarget
 from .models import AppInfo, AppSize
 
 HELPER_SCRIPT = Path(__file__).with_name("inventory_helper.py")
@@ -35,11 +36,14 @@ class InventoryResult:
 INVENTORY_HELPER_FLAG = "--inventory-helper"
 
 
-def helper_command(frozen: bool = config.IS_FROZEN) -> list[str]:
-    """Command for the inventory helper process (packaged app: the .exe in helper mode)."""
+def helper_command(frozen: bool = config.IS_FROZEN, *, target: Optional[DeviceTarget] = None) -> list[str]:
+    """Command for the inventory helper process (packaged app: the .exe in helper mode).
+
+    With a ``target`` the helper is told exactly which iPhone and connection to use."""
+    extra = target.helper_args() if target is not None else []
     if frozen:
-        return [sys.executable, INVENTORY_HELPER_FLAG, str(config.LIBIMOBILEDEVICE_BIN)]
-    return [_python_executable(), "-I", str(HELPER_SCRIPT), str(config.LIBIMOBILEDEVICE_BIN)]
+        return [sys.executable, INVENTORY_HELPER_FLAG, str(config.LIBIMOBILEDEVICE_BIN), *extra]
+    return [_python_executable(), "-I", str(HELPER_SCRIPT), str(config.LIBIMOBILEDEVICE_BIN), *extra]
 
 
 def _offloaded_app(entry: object) -> Optional[AppInfo]:
@@ -60,6 +64,7 @@ def fetch_inventory(
     cancel: threading.Event,
     *,
     on_home_screen: Optional[Callable[[set[str]], None]] = None,
+    target: Optional[DeviceTarget] = None,
     command: Optional[list[str]] = None,
     total_timeout: float = config.INVENTORY_TOTAL_TIMEOUT_SECONDS,
     idle_timeout: float = config.INVENTORY_IDLE_TIMEOUT_SECONDS,
@@ -68,7 +73,8 @@ def fetch_inventory(
     result = InventoryResult()
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     try:
-        proc = subprocess.Popen(command or helper_command(), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        proc = subprocess.Popen(command or helper_command(target=target), stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, creationflags=flags)
     except OSError as exc:
         result.error = f"could not start inventory helper: {exc}"
@@ -146,8 +152,8 @@ def fetch_inventory(
     if cancel.is_set():
         result.cancelled = True
     elif not finished:
-        result.error = "timed out" if timed_out[0] else _EXIT_MESSAGES.get(proc.returncode,
-                                                                           "inventory helper stopped unexpectedly")
+        result.error = "timed out" if timed_out[0] else exit_message(
+            proc.returncode, target, "inventory helper stopped unexpectedly")
     if not got_offloaded and not result.cancelled:
         result.offloaded_error = result.offloaded_error or result.error or "unavailable"
     if not got_home and not result.cancelled:

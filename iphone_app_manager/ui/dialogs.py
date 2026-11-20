@@ -432,3 +432,57 @@ class UninstallProgressDialog(_Dialog):
         self.done_button.set_enabled(True)
         self.done_button.focus_set()
         self.bind("<Return>", lambda _e: self._done())
+
+
+# ====================================================================== choose an iPhone
+class DevicePickerDialog(_Dialog):
+    """Lets the user pick which iPhone to manage when more than one is available.
+
+    Nothing is done to any iPhone until one is chosen here; closing the dialog chooses nothing.
+    """
+
+    def __init__(self, parent: tk.Misc, *, candidates: Sequence, connection_label: str, fonts: Fonts,
+                 scale: float, on_choose: Callable[[str], None],
+                 on_cancel: Optional[Callable[[], None]] = None, note: str = "") -> None:
+        super().__init__(parent, title="Choose an iPhone", fonts=fonts, scale=scale)
+        self.candidates = list(candidates)
+        self._on_choose = on_choose
+        self._on_cancel = on_cancel
+        self.result: Optional[str] = None      # the chosen UDID, or "cancel"
+        message = (f"More than one iPhone is available over {connection_label}. Choose the one you want to "
+                   "manage. Nothing is changed on any iPhone until you do.")
+        if note:
+            message = note + " " + message
+        self._header(Glyph.PHONE, "Choose an iPhone", message, accent=False)
+        self.choice_buttons: list[RoundedButton] = []
+        column = tk.Frame(self.body, bg=Colors.WHITE)
+        column.pack(fill="x", pady=(self.p(16), 0))
+        for device in self.candidates:
+            button = RoundedButton(column, text=device.label, command=lambda d=device: self.choose(d.udid),
+                                   fonts=fonts, scale=scale, glyph=Glyph.PHONE, min_width=self.WIDTH - 56)
+            button.pack(fill="x", pady=(0, self.p(8)))
+            self.choice_buttons.append(button)
+        buttons = self._buttons()
+        self.cancel_button = RoundedButton(buttons, text="Cancel", command=self.cancel, fonts=fonts,
+                                           scale=scale, min_width=110)
+        self.cancel_button.pack(side="right")
+        self.show()
+        self.cancel_button.focus_set()
+
+    def choose(self, udid: str) -> None:
+        if self.result is not None:
+            return
+        self.result = udid
+        self.close()
+        self._on_choose(udid)
+
+    def cancel(self) -> None:
+        if self.result is not None:
+            return
+        self.result = "cancel"
+        self.close()
+        if self._on_cancel:
+            self._on_cancel()
+
+    def _on_close_request(self) -> None:
+        self.cancel()

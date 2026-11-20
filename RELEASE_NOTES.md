@@ -1,4 +1,64 @@
-# iPhone App Manager 1.0.1
+# iPhone App Manager 1.0.2
+
+**Wi-Fi fix release** · Windows desktop app · USB and Wi-Fi
+
+> This is an independent project. It is not made by, or affiliated with, Apple Inc. "iPhone" is a trademark of Apple Inc.
+
+## What changed in 1.0.2
+
+- **Wi-Fi connections now work on the one iPhone tried.** The bundled `libimobiledevice` 1.3.0 could not connect to a Wi-Fi (network) device on Windows: the service listed the iPhone, but every connection failed with `Mux error (-8)`, which the app showed as "Not trusted". The cause is in libimobiledevice 1.3.0's own code, which reads the device's network address in a layout Windows does not use. Upstream fixed this after 1.3.0 (commit `a172604`, 2023) and released the fix in 1.4.0. `libimobiledevice-1.0.dll` and `ideviceinfo.exe` in the release are now libimobiledevice **1.4.0**, built from the unmodified upstream release tarball by `packaging\build_libimobiledevice.sh` with the MSYS2 UCRT64 compiler. No patches are applied, and two builds in different folders produced byte-identical files.
+- **Everything else is unchanged:** `ideviceinstaller.exe` 1.1.1, libimobiledevice-glue 1.3.2, libusbmuxd 2.1.1, libplist 2.7.0, OpenSSL, libzip, zlib, bzip2, xz and zstd are the same MSYS2 files as in 1.0.1, and the same set of DLLs is bundled. `ideviceinstaller.exe` is used unchanged with the new library: every library function it imports exists in 1.4.0, and the library's version numbers mark 1.4.0 as backward compatible with 1.3.0.
+- **Sort by Status.** Clicking the **STATUS** column heading now sorts the list: the first click puts Offloaded apps first, then Installed apps, and each further click reverses the two groups. Apps stay in name order (A to Z) within each group in both directions, and the heading shows an arrow for the direction. Search and your ticked apps are unaffected. The list also re-sorts itself when the offloaded information arrives after the app list.
+- **Helper error reporting hardened.** The two background helper programs (app list and icons) now report errors safely when started without a console. Before, if one was started by hand outside the app with, for example, a missing library folder, the attempt to print the error raised a second exception (`'NoneType' object has no attribute 'write'`) that hid the real cause and ended in an unhandled-exception dialog. They now exit with their normal code (4 for a library that cannot be loaded). The app itself always starts the helpers with their output piped, so normal use was not affected.
+- **libtatsu and curl are not bundled.** libimobiledevice 1.4.0's configure script needs libtatsu (which needs curl) to build, but neither built file imports them. The build script and the release build both check this.
+- **Licence notices and source bundle updated.** `THIRD-PARTY-NOTICES.txt` now describes libimobiledevice 1.4.0 (all 64 source and header files compiled into the two files carry an LGPL-2.1-or-later header; upstream publishes no signature for the tarball), and the statement that all bundled binaries are unmodified MSYS2 binaries now names the two exceptions. `Third-Party-Source-Code-1.0.2.zip` holds the source of the same five components (four MSYS2 source packages, plus the upstream libimobiledevice 1.4.0 tarball and the script that builds it) and the libtatsu tarball the build needs. It covers only those five components; the MSYS2 libimobiledevice 1.3.0 source package is no longer part of it. The notices are the author's own audit and have not been reviewed by a lawyer.
+
+## What was verified (and what was not)
+
+- **Real iPhone, over Wi-Fi, read-only (one iPhone, iOS 27.2.1, one home network):** the app's device discovery listed the iPhone over both USB and Wi-Fi; the app's own device service, run against the built tools in Wi-Fi mode, read the device information, 88 apps and the storage figures with no "Not trusted" message; the bundled `ideviceinfo -n` read the device information; `ideviceinstaller -n --list-apps` returned the same number of entries (89 lines) as over USB; and the app's inventory and icon helpers (run from the built `iPhone App Manager.exe` with MSYS2 off the PATH) loaded the app list, sizes and icons over Wi-Fi. The same bundled tools failed with `Mux error (-8)` before the change.
+- **Unplugged and in the installed app:** the first checks ran while the iPhone was also connected by USB (they used the Wi-Fi path only, because the `-n` flag and the helpers' Wi-Fi mode consider network devices only). They were repeated with the iPhone unplugged and awake: the Apple service listed only a Network entry, and every check above passed again. The author then tested the final installed 1.0.2 build with the same unplugged iPhone, awake on the same Wi-Fi network: it connected over Wi-Fi, loaded the app list, and the STATUS heading sorted Offloaded-first and Installed-first as described above (the author's own report of that test).
+- **Compatibility of `ideviceinstaller` 1.1.1 with the 1.4.0 library (checked statically, not by installing anything):** every function it imports exists in 1.4.0 (42 of 42); the prototypes of the functions the app calls directly are identical; the only header differences are additions (a pairing enum and callback, the error code `IDEVICE_E_CONNREFUSED`, and one new trailing field in `struct lockdownd_service_descriptor`, which `ideviceinstaller` never reads or allocates itself).
+- **Not tested:** installing or removing an app over Wi-Fi (no apps were installed or removed during this work), other iPhones, other routers or iOS versions, Windows 10, and a clean-PC run of this build.
+- The automated test suite (298 tests) was updated for the new components and passes.
+
+## Known limitations of Wi-Fi in this release
+
+- Wi-Fi still needs wireless sync to be on for the iPhone. On the one iPhone tried, ticking **Show this iPhone when on Wi-Fi** in Apple Devices and clicking Apply did **not** switch it on (the box un-ticked itself). Wi-Fi worked only after the setting was written to the iPhone directly with a developer tool, which this app does not do. So Wi-Fi may be unavailable on your iPhone even though the app works.
+- The app still words a connection failure of this kind as "Not trusted". That label can be wrong: the same message appeared when trust was fine.
+- Running from source uses MSYS2's libimobiledevice 1.3.0, so Wi-Fi does not work there; USB does.
+- **Apple's device service sometimes stops listing the iPhone over Wi-Fi.** On the test PC the list went empty several times, between about 17 and 50 minutes after it had last recovered, even though the iPhone was awake, reachable and still advertising its wireless-sync service. The app then says "iPhone not available over Wi-Fi" (the same message as when Wi-Fi sync is off). Closing and reopening Apple Devices did not fix it. Ending Apple's `AppleMobileDeviceProcess` in Task Manager did: Apple restarts it by itself within about 15 seconds and the iPhone was listed again. The cause is not known and is outside this app.
+- Locking the iPhone's screen can also make it disappear from the list for a while (it dropped out within seconds of the phone going to sleep and came back when it woke); keep the iPhone awake while you use Wi-Fi.
+
+## Downloads (1.0.2)
+
+| File | Size |
+|---|---|
+| `iPhone App Manager Setup 1.0.2.exe` | 12,675,941 bytes (about 12.1 MB) |
+| `iPhone-App-Manager-Setup-1.0.2.sha256` | SHA-256 checksum for the installer |
+| `iPhone-App-Manager-1.0.2-Portable.zip` | 15,123,732 bytes (about 14.4 MB) |
+| `iPhone-App-Manager-1.0.2-Portable.sha256` | SHA-256 checksum for the portable ZIP |
+| `Third-Party-Source-Code-1.0.2.zip` | 2,210,027 bytes (about 2.1 MB) |
+| `Third-Party-Source-Code-1.0.2.sha256` | SHA-256 checksum for the source-code ZIP |
+
+**SHA-256 (1.0.2)**
+
+```
+A7ED5F0B7D463D67FBE6DC18D699BE5C40CB65A24AA5BBC7FBA7FC6ED5F9A749  iPhone App Manager Setup 1.0.2.exe
+AE51E744E547CFF0626934816022755A060F68156E274FC6A049FA28670561DF  iPhone-App-Manager-1.0.2-Portable.zip
+7C83246D7F488CB01AE80C2F5FF52161D6879C94804DEAA32B48FAC80C69A79C  Third-Party-Source-Code-1.0.2.zip
+```
+
+Check a download in PowerShell; the result should match the value above:
+
+```powershell
+Get-FileHash .\iPhone-App-Manager-1.0.2-Portable.zip -Algorithm SHA256
+```
+
+When you upgrade from 1.0.1 by running the new installer, the two old licence texts `libimobiledevice-1.3.0-AUTHORS.txt` and `libimobiledevice-1.3.0-COPYING.LESSER.txt` stay in the installed `licenses` folder (the installer replaces files but does not remove old ones). They are harmless and are removed when you uninstall. The requirements, installation steps and safety information below are unchanged from 1.0.0 and still apply. The installer is not code-signed, as before.
+
+---
+
+# Version 1.0.1 release notes (historical, unchanged)
 
 **Licensing-notice correction release** · Windows desktop app · USB only
 

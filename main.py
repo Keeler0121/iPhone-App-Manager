@@ -49,12 +49,15 @@ def main() -> None:
 
     import tkinter as tk
 
+    from iphone_app_manager.connection import query_device_list
     from iphone_app_manager.device import DeviceService
     from iphone_app_manager.ui import MainWindow
 
     _prepare_windows()
     root = tk.Tk()
-    MainWindow(root, DeviceService())
+    # USB is the default connection; Wi-Fi is chosen in the window. The Apple device service is asked
+    # which iPhones are reachable, so every command can name the exact iPhone and connection.
+    MainWindow(root, DeviceService(discoverer=query_device_list))
     root.mainloop()
 
 

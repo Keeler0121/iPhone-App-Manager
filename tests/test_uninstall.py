@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from iphone_app_manager import icon_helper  # noqa: E402
+from iphone_app_manager.connection import ConnectionType  # noqa: E402
 from iphone_app_manager.device import (  # noqa: E402
     DeviceError, DeviceService, ErrorKind, ToolResult, UninstallFailure, interpret_uninstall_output,
     is_valid_bundle_id, removal_block_reason,
@@ -206,10 +207,18 @@ class FakeService:
         self.behaviour: dict[str, object] = {}
         self.delay = 0.0
         self.fail_load: DeviceError | None = None
+        self.connection = ConnectionType.USB      # the original, USB-only behaviour
+        self.target = None
         self.loads = 0
         self._active = 0
         self.peak = 0
         self._lock = threading.Lock()
+
+    def set_connection(self, connection):
+        self.connection, self.target = connection, None
+
+    def choose_device(self, udid):
+        self.target = None
 
     def load_snapshot(self, progress=None):
         self.loads += 1

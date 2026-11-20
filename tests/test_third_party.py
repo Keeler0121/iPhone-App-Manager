@@ -31,23 +31,34 @@ from iphone_app_manager import config  # noqa: E402
 APP_DIR = ROOT / "dist" / "iPhone App Manager"
 ZSTD = Path(r"C:\msys64\usr\bin\zstd.exe")
 
-# SHA-256 of the five MSYS2 source archives and their signatures as verified when they were obtained from
+# SHA-256 of the four MSYS2 source archives and their signatures as verified when they were obtained from
 # https://repo.msys2.org/mingw/sources/ (the audit's SHA256SUMS.txt). Kept here independently of third_party.py.
+# (The MSYS2 libimobiledevice 1.3.0-18 package is no longer bundled: the release builds 1.4.0 from upstream.)
 VERIFIED_SOURCE_HASHES = {
     "mingw-w64-ideviceinstaller-1.1.1-2.src.tar.zst": "8998367b0bdfdaf06cb8987a7db77dba231c2e6e6f87e24c6c0da6209df38a5b",
-    "mingw-w64-libimobiledevice-1.3.0-18.src.tar.zst": "2f8f2f56a713b4ce8a61cabbca6c1f9ba9786dcd4161ec59977876c39fee9697",
     "mingw-w64-libimobiledevice-glue-1.3.2-1.src.tar.zst": "ee156ff49a69840c1e919d50de5d06d935765882bd24fe74ff496f535f0fcdc3",
     "mingw-w64-libplist-2.7.0-4.src.tar.zst": "0170254ac2a3e4fa0c88ec974a4e6d6a1e1b91d3da14d91b9b147a336c09a015",
     "mingw-w64-libusbmuxd-2.1.1-1.src.tar.zst": "d5d11d66e65e3926892b9f1301b8c75a4472f68184f86b21874026bcd4c28797",
     "mingw-w64-ideviceinstaller-1.1.1-2.src.tar.zst.sig": "decdc5acb55e115fa9e8470a713823e3279a77447677f47627788041badef299",
-    "mingw-w64-libimobiledevice-1.3.0-18.src.tar.zst.sig": "1278c89a6d8971be0da307e77a052457bc003f65b88cb8dbcd5fc1067d71ce82",
     "mingw-w64-libimobiledevice-glue-1.3.2-1.src.tar.zst.sig": "6efd5d988c150a858823f8d4f67080e8eee4354babfe222b3b6a1d262ef3ed38",
     "mingw-w64-libplist-2.7.0-4.src.tar.zst.sig": "b4b269ff6460c77bd2848a824d21f1b2804d9b5a8ff57028aedd9107f383550d",
     "mingw-w64-libusbmuxd-2.1.1-1.src.tar.zst.sig": "8bdbb6b1bf4bc3a4d940391fb50a8036f3f8a1440f949336ea1c5d7201237565",
 }
-VERIFIED_SHA256SUMS = "".join(f"{h} *{n}\n" for n, h in (
-    sorted((n, h) for n, h in VERIFIED_SOURCE_HASHES.items() if n.endswith(".zst")) +
-    sorted((n, h) for n, h in VERIFIED_SOURCE_HASHES.items() if n.endswith(".sig"))))
+# Upstream release tarballs (no signature is published): hashes computed from the files downloaded from the
+# project's GitHub release pages, and matching the "digest" GitHub reports for the libimobiledevice asset.
+VERIFIED_UPSTREAM_HASHES = {
+    "libimobiledevice-1.4.0.tar.bz2": "23cc0077e221c7d991bd0eb02150a0d49199bcca1ddf059edccee9ffd914939d",
+    "libtatsu-1.0.5.tar.bz2": "536fa228b14f156258e801a7f4d25a3a9dd91bb936bf6344e23171403c57e440",
+}
+BUILD_SCRIPT = PACKAGING / "build_libimobiledevice.sh"
+
+
+def expected_sha256sums() -> str:
+    script = hashlib.sha256(BUILD_SCRIPT.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+    rows = (sorted((n, h) for n, h in VERIFIED_SOURCE_HASHES.items() if n.endswith(".zst")) +
+            sorted(VERIFIED_UPSTREAM_HASHES.items()) + [(BUILD_SCRIPT.name, script)] +
+            sorted((n, h) for n, h in VERIFIED_SOURCE_HASHES.items() if n.endswith(".sig")))
+    return "".join(f"{h} *{n}\n" for n, h in rows)
 
 # Third-party e-mail addresses that appear inside verbatim upstream licence texts (not personal data of ours).
 UPSTREAM_EMAILS = {"info@libzip.org", "jloup@gzip.org", "jseward@acm.org", "madler@alumni.caltech.edu",
@@ -55,15 +66,16 @@ UPSTREAM_EMAILS = {"info@libzip.org", "jloup@gzip.org", "jseward@acm.org", "madl
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 ENTRY_HEADINGS = [
-    "ideviceinstaller 1.1.1-2", "libimobiledevice 1.3.0-18", "libimobiledevice-glue 1.3.2-1", "libusbmuxd 2.1.1-1",
+    "ideviceinstaller 1.1.1-2", "libimobiledevice 1.4.0", "libimobiledevice-glue 1.3.2-1", "libusbmuxd 2.1.1-1",
     "libplist 2.7.0-4", "openssl 4.1.0-1", "libzip 1.12.1-1", "zlib 1.4-2", "bzip2 1.0.8-4", "xz 5.8.4-1",
     "zstd 1.5.7-2", "Python 3.12.10", "OpenSSL 3.0.16", "Tcl/Tk 8.6.15", "libffi 3.4.4", "Expat 2.7.1",
     "zlib 1.3.1", "libmpdec 2.5.1", "PyInstaller 6.22.3", "Inno Setup 6.7.3",
 ]
 EXPECTED_LICENCE_FILES = {
-    # project-specific texts from the exact upstream tarballs in the five MSYS2 source packages
+    # project-specific texts from the exact upstream tarballs (in the MSYS2 source packages, or the libimobiledevice
+    # 1.4.0 tarball kept in packaging/third-party-sources)
     "ideviceinstaller-1.1.1-COPYING.txt", "ideviceinstaller-1.1.1-AUTHORS.txt",
-    "libimobiledevice-1.3.0-COPYING.LESSER.txt", "libimobiledevice-1.3.0-AUTHORS.txt",
+    "libimobiledevice-1.4.0-COPYING.LESSER.txt", "libimobiledevice-1.4.0-AUTHORS.txt",
     "libplist-2.7.0-COPYING.LESSER.txt", "libplist-2.7.0-COPYING-GPLv2.txt", "libplist-2.7.0-AUTHORS.txt",
     "libplist-2.7.0-MIT-time64.txt", "libplist-2.7.0-MIT-jsmn.txt",
     "libimobiledevice-glue-1.3.2-COPYING.txt", "libimobiledevice-glue-1.3.2-LibTomCrypt-notice.txt",
@@ -79,6 +91,8 @@ OBSOLETE_GENERIC_NAMES = {
     "ideviceinstaller-COPYING.GPLv2.txt", "libimobiledevice-COPYING.GPLv2.txt", "libimobiledevice-COPYING.LGPLv2.1.txt",
     "libimobiledevice-glue-COPYING.LGPLv2.1.txt", "libplist-COPYING.GPLv2.txt", "libplist-COPYING.LGPLv2.1.txt",
     "libusbmuxd-COPYING.LGPLv2.1.txt", "python-LICENSE.txt", "tcltk-license.terms.txt",
+    # the libimobiledevice 1.3.0 texts: that version is no longer bundled
+    "libimobiledevice-1.3.0-COPYING.LESSER.txt", "libimobiledevice-1.3.0-AUTHORS.txt",
 }
 
 
@@ -114,13 +128,43 @@ class NoticesContentTests(unittest.TestCase):
             self.assertRegex(self.text, rf"(?m)^{re.escape(key)} {re.escape(pkg.version)}$")
             self.assertIn(f"SHA-256 {pkg.sha256}", self.text)
             self.assertIn(pkg.archive, self.text)
+        # libimobiledevice is no longer an MSYS2 package: it is built from the upstream 1.4.0 tarball
         self.assertEqual(sorted(tp.SOURCE_PACKAGE_BY_NAME), sorted(
-            ["ideviceinstaller", "libimobiledevice", "libplist", "libimobiledevice-glue", "libusbmuxd"]))
+            ["ideviceinstaller", "libplist", "libimobiledevice-glue", "libusbmuxd"]))
+
+    def test_libimobiledevice_1_4_0_is_documented_as_built_from_upstream_not_as_an_msys2_binary(self):
+        lm = tp.UPSTREAM_SOURCE_BY_NAME["libimobiledevice"]
+        self.assertEqual((lm.version, lm.archive, lm.shipped), ("1.4.0", "libimobiledevice-1.4.0.tar.bz2", True))
+        entry = block(self.text, "libimobiledevice 1.4.0")
+        self.assertIn("NOT an MSYS2 binary", entry)
+        self.assertIn("a172604", entry)
+        self.assertIn("unmodified upstream release tarball libimobiledevice-1.4.0.tar.bz2", entry)
+        self.assertIn("build_libimobiledevice.sh", entry)
+        self.assertIn("No patches are applied", entry)
+        self.assertIn(f"SHA-256 {lm.sha256}", entry)
+        self.assertIn("publishes no signature", entry)
+        self.assertIn("64 source and header files", entry)
+        self.assertNotIn("1.3.0-18", self.text)
+        self.assertNotIn("libimobiledevice-1.3.0", self.text)
+        intro = " ".join(self.text.split())
+        self.assertIn("EXCEPT libimobiledevice-1.0.dll and ideviceinfo.exe", intro)
+        self.assertNotIn("These are unmodified binaries from the MSYS2 project", intro)
+
+    def test_libtatsu_is_documented_as_a_build_time_prerequisite_only(self):
+        lt = tp.UPSTREAM_SOURCE_BY_NAME["libtatsu"]
+        self.assertEqual((lt.version, lt.shipped), ("1.0.5", False))
+        entry = block(self.text, "libimobiledevice 1.4.0")
+        self.assertIn(f"libtatsu {lt.version}", entry)
+        self.assertIn(f"SHA-256 {lt.sha256}", entry)
+        self.assertIn("NOT part of this release", entry)
+        self.assertIn("Neither file imports libtatsu.dll or libcurl", entry)
+        self.assertNotRegex(self.text, r"(?m)^libtatsu ")                  # no component entry: nothing of it ships
+        self.assertNotRegex(self.text, r"(?m)^curl ")
 
     def test_licence_identifiers_per_component(self):
         t = self.text
         self.assertIn("GPL-2.0-or-later", block(t, "ideviceinstaller 1.1.1-2"))
-        for heading in ("libimobiledevice 1.3.0-18", "libimobiledevice-glue 1.3.2-1", "libusbmuxd 2.1.1-1"):
+        for heading in ("libimobiledevice 1.4.0", "libimobiledevice-glue 1.3.2-1", "libusbmuxd 2.1.1-1"):
             self.assertIn("LGPL-2.1-or-later", block(t, heading), heading)
         plist = block(t, "libplist 2.7.0-4")
         self.assertIn("LGPL-2.1-or-later", plist)
@@ -138,7 +182,7 @@ class NoticesContentTests(unittest.TestCase):
     def test_no_obsolete_ideviceinfo_gpl_claim(self):
         self.assertNotIn("ideviceinfo: GPL", self.text)
         self.assertNotRegex(self.text, r"LGPL-2\.1-or-later \(ideviceinfo")
-        entry = block(self.text, "libimobiledevice 1.3.0-18")
+        entry = block(self.text, "libimobiledevice 1.4.0")
         self.assertIn("ideviceinfo is LGPL, not GPL", entry)
         self.assertIn("tools/ideviceinfo.c", entry)
         self.assertIn("tools/idevicesetlocation.c", entry)               # the one GPL program that is NOT bundled
@@ -207,11 +251,15 @@ class NoticesContentTests(unittest.TestCase):
         self.assertIn("Martijn Laan", t)
 
     def test_source_bundle_scope_is_not_overstated(self):
-        t = self.text
+        t = " ".join(self.text.split())
         self.assertIn("FIVE components", t)
-        self.assertIn("and nothing else", t)
+        self.assertIn("four MSYS2 source packages and the upstream libimobiledevice 1.4.0 tarball", t)
+        self.assertIn("It contains nothing else", t)
         self.assertIn("does not cover the other", t)
+        self.assertIn("no libtatsu code is in the release", t)
         self.assertIn(tp.bundle_name("1.0.0"), t)
+        for src in tp.UPSTREAM_SOURCES:
+            self.assertIn(f"{src.sha256} {src.archive}", t)                 # (whitespace-normalised text)
 
     def test_notices_make_no_compliance_claim(self):
         self.assertIn("not a statement that every obligation has been met", self.text)
@@ -244,7 +292,7 @@ class LicenceFileTests(unittest.TestCase):
         def text(name):
             return " ".join((tp.LICENCES_DIR / name).read_bytes().decode("utf-8", "replace").split())
         self.assertIn("GNU GENERAL PUBLIC LICENSE", text("ideviceinstaller-1.1.1-COPYING.txt")[:200])
-        for name in ("libimobiledevice-1.3.0-COPYING.LESSER.txt", "libplist-2.7.0-COPYING.LESSER.txt",
+        for name in ("libimobiledevice-1.4.0-COPYING.LESSER.txt", "libplist-2.7.0-COPYING.LESSER.txt",
                      "libimobiledevice-glue-1.3.2-COPYING.txt", "libusbmuxd-2.1.1-COPYING.txt"):
             self.assertIn("GNU LESSER GENERAL PUBLIC LICENSE", text(name)[:200], name)
             self.assertIn("Version 2.1", text(name)[:300], name)
@@ -274,9 +322,6 @@ class LicenceFileTests(unittest.TestCase):
             ("ideviceinstaller", "mingw-w64-ideviceinstaller-1.1.1-2", "ideviceinstaller-1.1.1.tar.gz",
              "ideviceinstaller-1.1.1"): {"COPYING": "ideviceinstaller-1.1.1-COPYING.txt",
                                          "AUTHORS": "ideviceinstaller-1.1.1-AUTHORS.txt"},
-            ("libimobiledevice", "mingw-w64-libimobiledevice-1.3.0-18", "libimobiledevice-1.3.0.tar.gz",
-             "libimobiledevice-1.3.0"): {"COPYING.LESSER": "libimobiledevice-1.3.0-COPYING.LESSER.txt",
-                                         "AUTHORS": "libimobiledevice-1.3.0-AUTHORS.txt"},
             ("libplist", "mingw-w64-libplist-2.7.0-4", "libplist-2.7.0.tar.bz2", "libplist-2.7.0"):
                 {"COPYING.LESSER": "libplist-2.7.0-COPYING.LESSER.txt", "COPYING": "libplist-2.7.0-COPYING-GPLv2.txt",
                  "AUTHORS": "libplist-2.7.0-AUTHORS.txt"},
@@ -295,6 +340,14 @@ class LicenceFileTests(unittest.TestCase):
                 self.assertEqual(inner.extractfile(f"{top}/{member}").read(), (tp.LICENCES_DIR / shipped).read_bytes(),
                                  shipped)
 
+    def test_libimobiledevice_texts_are_byte_identical_to_the_upstream_1_4_0_tarball(self):
+        import tarfile
+        with tarfile.open(tp.SOURCES_DIR / "libimobiledevice-1.4.0.tar.bz2", "r:bz2") as tar:
+            for member, shipped in (("COPYING.LESSER", "libimobiledevice-1.4.0-COPYING.LESSER.txt"),
+                                    ("AUTHORS", "libimobiledevice-1.4.0-AUTHORS.txt")):
+                self.assertEqual(tar.extractfile(f"libimobiledevice-1.4.0/{member}").read(),
+                                 (tp.LICENCES_DIR / shipped).read_bytes(), shipped)
+
     def test_generic_xz_licence_copies_are_no_longer_used_for_the_five_packages(self):
         for name in OBSOLETE_GENERIC_NAMES:
             self.assertFalse((tp.LICENCES_DIR / name).exists(), name)
@@ -303,17 +356,55 @@ class LicenceFileTests(unittest.TestCase):
 
 
 class PinnedVersionTests(unittest.TestCase):
-    def test_msys2_packages_documented_in_the_notices_provide_every_bundled_file(self):
+    def test_documented_sources_provide_every_bundled_file(self):
         build = load_build_script()
-        provided = list(tp.MSYS2_FIVE_FILES) + [f for entry in tp.MSYS2_OTHER for f in entry[5]]
+        provided = (list(tp.MSYS2_SOURCE_FILES) + list(tp.BUILT_FILES) +
+                    [f for entry in tp.MSYS2_OTHER for f in entry[5]])
         self.assertEqual(sorted(provided), sorted(build.TOOLS + build.DLLS))
         self.assertEqual(sorted(tp.PINNED_TOOL_SHA256), sorted(build.TOOLS + build.DLLS))
+        self.assertEqual(set(tp.BUILT_FILES), {"libimobiledevice-1.0.dll", "ideviceinfo.exe"})
 
     @unittest.skipUnless(MSYS2_AVAILABLE, "MSYS2 not installed")
     def test_pinned_hashes_match_the_installed_msys2_files(self):
         for name, want in tp.PINNED_TOOL_SHA256.items():
+            if name in tp.BUILT_FILES:                                    # built from upstream, not an MSYS2 file
+                continue
             got = hashlib.sha256((config.MSYS2_BIN / name).read_bytes()).hexdigest().upper()
             self.assertEqual(got, want, name)
+
+    def test_built_files_match_their_pins_and_are_not_the_msys2_1_3_0_files(self):
+        self.assertEqual(tp.verify_built_files(), [])
+        for name in tp.BUILT_FILES:
+            got = hashlib.sha256((tp.BUILT_DIR / name).read_bytes()).hexdigest().upper()
+            self.assertEqual(got, tp.PINNED_TOOL_SHA256[name], name)
+        # the hashes of the MSYS2 libimobiledevice 1.3.0-18 files that the 1.0.1 release shipped
+        for old in ("7E57F601ED44351895D10DD1A72FED44AEA137F97ED32AF51EE5E897987A14E5",
+                    "61F8D3D9FDBD29762D303C53010FCB7CF53B3A8BFC6246790E01A34EB8263FDB"):
+            self.assertNotIn(old, tp.PINNED_TOOL_SHA256.values())
+
+    def test_built_files_do_not_depend_on_libtatsu_or_curl(self):
+        for name in tp.BUILT_FILES:
+            data = (tp.BUILT_DIR / name).read_bytes().lower()
+            for needle in (b"tatsu", b"libcurl", b"nghttp", b"ngtcp2", b"libssh2", b"libpsl"):
+                self.assertNotIn(needle, data, f"{name} mentions {needle!r}")
+        for name in ("libimobiledevice-1.0.dll", "ideviceinfo.exe"):
+            self.assertIn(b"libplist-2.0.dll", (tp.BUILT_DIR / name).read_bytes())
+
+    def test_tool_source_takes_only_the_two_built_files_from_the_pinned_build(self):
+        build = load_build_script()
+        for name in build.TOOLS + build.DLLS:
+            want = tp.BUILT_DIR if name in tp.BUILT_FILES else config.MSYS2_BIN
+            self.assertEqual(build.tool_source(name), want / name, name)
+
+    def test_bundled_dll_list_has_no_libtatsu_or_curl_files(self):
+        build = load_build_script()
+        for name in build.TOOLS + build.DLLS:
+            self.assertIsNone(re.search(r"(?i)tatsu|curl|nghttp|ngtcp2|libssh2|libpsl", name), name)
+        with tempfile.TemporaryDirectory() as tmp:
+            build.verify_no_unneeded_runtime_files(Path(tmp))                 # an empty folder passes
+            (Path(tmp) / "libtatsu.dll").write_bytes(b"x")
+            with self.assertRaises(SystemExit):
+                build.verify_no_unneeded_runtime_files(Path(tmp))
 
     def test_verify_bundled_tools_fails_on_a_changed_file(self):
         build = load_build_script()
@@ -342,7 +433,18 @@ class SourceBundleTests(unittest.TestCase):
         for pkg in tp.SOURCE_PACKAGES:
             self.assertEqual(VERIFIED_SOURCE_HASHES[pkg.archive], pkg.sha256)
             self.assertEqual(VERIFIED_SOURCE_HASHES[pkg.signature], pkg.sig_sha256)
-        self.assertEqual(len(tp.SOURCE_PACKAGES), 5)
+        self.assertEqual(len(tp.SOURCE_PACKAGES), 4)
+        for src in tp.UPSTREAM_SOURCES:
+            self.assertEqual(VERIFIED_UPSTREAM_HASHES[src.archive], src.sha256)
+            data = (tp.SOURCES_DIR / src.archive).read_bytes()
+            self.assertEqual(hashlib.sha256(data).hexdigest(), src.sha256, src.archive)
+            self.assertEqual(len(data), src.size, src.archive)
+        self.assertEqual(sorted(VERIFIED_UPSTREAM_HASHES), sorted(s.archive for s in tp.UPSTREAM_SOURCES))
+
+    def test_source_folder_holds_exactly_the_documented_files(self):
+        on_disk = {p.name for p in tp.SOURCES_DIR.iterdir() if p.is_file()}
+        self.assertEqual(on_disk, set(VERIFIED_SOURCE_HASHES) | set(VERIFIED_UPSTREAM_HASHES) | {"README.txt"})
+        self.assertFalse([n for n in on_disk if "libimobiledevice-1.3.0" in n])      # the 1.3.0 package is gone
 
     def test_verify_source_files_detects_tampering_and_omissions(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -368,14 +470,17 @@ class SourceBundleTests(unittest.TestCase):
                 top = "Third-Party-Source-Code-1.0.0/"
                 names = [i.filename for i in z.infolist()]
                 self.assertEqual(sorted(n[len(top):] for n in names),
-                                 sorted(list(VERIFIED_SOURCE_HASHES) + ["README.txt", "SHA256SUMS.txt"]))
-                self.assertEqual(len(names), 12)
+                                 sorted(list(VERIFIED_SOURCE_HASHES) + list(VERIFIED_UPSTREAM_HASHES) +
+                                        [BUILD_SCRIPT.name, "README.txt", "SHA256SUMS.txt"]))
+                self.assertEqual(len(names), 13)
                 self.assertTrue(all(n.startswith(top) for n in names))
                 self.assertEqual({i.compress_type for i in z.infolist()}, {zipfile.ZIP_STORED})
-                for name, want in VERIFIED_SOURCE_HASHES.items():
+                for name, want in {**VERIFIED_SOURCE_HASHES, **VERIFIED_UPSTREAM_HASHES}.items():
                     self.assertEqual(hashlib.sha256(z.read(top + name)).hexdigest(), want, name)
                     self.assertEqual(z.read(top + name), (tp.SOURCES_DIR / name).read_bytes(), name)   # byte-for-byte
-                self.assertEqual(z.read(top + "SHA256SUMS.txt").decode("ascii"), VERIFIED_SHA256SUMS)
+                self.assertEqual(z.read(top + BUILD_SCRIPT.name), BUILD_SCRIPT.read_bytes().replace(b"\r\n", b"\n"))
+                self.assertNotIn(b"\r", z.read(top + BUILD_SCRIPT.name))              # bash cannot run a CRLF script
+                self.assertEqual(z.read(top + "SHA256SUMS.txt").decode("ascii"), expected_sha256sums())
             digest = hashlib.sha256(bundle.read_bytes()).hexdigest().upper()
             self.assertEqual((Path(tmp) / "Third-Party-Source-Code-1.0.0.sha256").read_text(encoding="ascii"),
                              f"{digest} *{bundle.name}\n")
@@ -386,18 +491,41 @@ class SourceBundleTests(unittest.TestCase):
 
     def test_bundle_readme_states_scope_and_makes_no_overclaims(self):
         text = (tp.SOURCES_README).read_text(encoding="utf-8")
+        flat = " ".join(text.split())
         for pkg in tp.SOURCE_PACKAGES:
             self.assertIn(pkg.archive, text)
-        self.assertIn("FIVE third-party components", text)
-        self.assertIn("does NOT cover any other component", text)
+        for src in tp.UPSTREAM_SOURCES:
+            self.assertIn(src.archive, text)
+        self.assertIn(tp.BUILD_SCRIPT_NAME, text)
+        self.assertIn("FIVE third-party components", flat)
+        self.assertIn("does NOT cover any other component", flat)
         self.assertIn("PKGBUILD", text)
         self.assertIn("patches", text)
         self.assertIn("upstream source archive", text)
-        self.assertIn("NOT been rebuilt", text)
-        self.assertIn("no claim is made that\n    the binaries can be reproduced", text)
+        self.assertIn("The author did not rebuild them", flat)             # the four MSYS2 components
+        self.assertIn("No claim is made that the four MSYS2 binaries can be reproduced", flat)
+        self.assertIn("built by the author from the unmodified 1.4.0 tarball", flat)
+        self.assertIn("No patches are applied", flat)
+        self.assertIn("Upstream publishes no signature", flat)
+        self.assertIn("BUILD-TIME prerequisite only", flat)                # libtatsu
         self.assertIn(tp.MSYS2_SOURCES_URL, text)
         self.assertIn("5F94 4B02 7F7F E209 1985 AA2E FA11 531A A0AA 7F57", text)
-        self.assertIn("MSYS2's metadata also lists GPL-2.0-or-later", text)
+        self.assertIn("MSYS2's metadata also lists GPL-2.0-or-later", flat)
+        self.assertNotIn("NOT been rebuilt", text)                          # that statement was true of 1.0.1 only
+        self.assertNotIn("mingw-w64-libimobiledevice-1.3.0", text)
+
+    def test_build_script_matches_the_pinned_sources_and_has_unix_line_endings(self):
+        script = BUILD_SCRIPT.read_bytes()
+        self.assertNotIn(b"\r", script)
+        text = script.decode("utf-8")
+        for src in tp.UPSTREAM_SOURCES:
+            self.assertIn(src.archive, text)
+            self.assertIn(src.sha256, text)
+        self.assertIn("libtatsu.dll", text)                                  # the no-libtatsu-import check
+        self.assertIn("make install-strip", text)
+        self.assertIn("--no-insert-timestamp", text)
+        self.assertNotRegex(text, r"(?m)^\s*patch\b")                        # no patches are applied
+        self.assertIn(BUILD_SCRIPT.name, (PACKAGING / ".." / ".gitattributes").resolve().read_text(encoding="utf-8"))
 
     @unittest.skipUnless(Path(r"C:\Users").is_dir() and any(
         Path(r"C:\Users").glob("*/iPhone-App-Manager-Licensing-Audit/Third-Party-Source-Code-1.0.0.zip")),
@@ -407,9 +535,8 @@ class SourceBundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             top = "Third-Party-Source-Code-1.0.0/"
             with zipfile.ZipFile(self.make(tmp)) as ours, zipfile.ZipFile(audit) as theirs:
-                for name in VERIFIED_SOURCE_HASHES:
+                for name in VERIFIED_SOURCE_HASHES:                    # the four MSYS2 packages are unchanged since 1.0.0
                     self.assertEqual(ours.read(top + name), theirs.read(top + name), name)
-                self.assertEqual(ours.read(top + "SHA256SUMS.txt"), theirs.read(top + "SHA256SUMS.txt"))
 
     def test_build_script_adds_the_bundle_to_the_release_output(self):
         source = (PACKAGING / "build.py").read_text(encoding="utf-8")

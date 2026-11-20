@@ -16,10 +16,13 @@ Steps
      (app-local UCRT and VCRUNTIME140.dll; see packaging\\runtime_policy.py) and the build then verifies none of
      them is present.
   3. Copy the libimobiledevice tools and every DLL they need into tools\\libimobiledevice,
-     verifying the dependency list with MSYS2's ldd so nothing is missed.
+     verifying the dependency list with MSYS2's ldd so nothing is missed. ideviceinfo.exe and
+     libimobiledevice-1.0.dll come from packaging\\third-party-binaries (libimobiledevice 1.4.0, built by
+     packaging\\build_libimobiledevice.sh); everything else is copied from the MSYS2 UCRT64 packages.
   4. Write the licence notices (THIRD-PARTY-NOTICES.txt generated from packaging\\third_party.py plus the
      verbatim texts in packaging\\licenses), plus a short README.txt.
-  5. Create the separate Third-Party-Source-Code zip from packaging\\third-party-sources (hash-verified).
+  5. Create the separate Third-Party-Source-Code zip from packaging\\third-party-sources and
+     packaging\\build_libimobiledevice.sh (hash-verified).
 The source project is never modified (build output goes to build\\ and dist\\ only).
 
 The release needs Microsoft's Visual C++ Redistributable (x64) on the user's PC; it is NOT bundled.
@@ -29,6 +32,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -108,8 +112,17 @@ def version_file(path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------------------- tools
+def tool_source(name: str) -> Path:
+    """Where the build takes a bundled file from: the two files built from the upstream libimobiledevice 1.4.0
+    tarball come from packaging/third-party-binaries (pinned); every other file is the MSYS2 package's file."""
+    return (third_party.BUILT_DIR if name in third_party.BUILT_FILES else MSYS2_BIN) / name
+
+
 def ldd_deps(binary: Path) -> set[str]:
-    out = subprocess.run([str(LDD), str(binary)], capture_output=True, text=True, check=True).stdout
+    """The MSYS2 UCRT64 DLLs ``binary`` needs (MSYS2's bin folder is put on PATH so a binary kept outside MSYS2
+    is resolved the same way). Dependencies found next to the binary or in Windows are not MSYS2 files."""
+    env = dict(os.environ, PATH=str(MSYS2_BIN) + os.pathsep + os.environ.get("PATH", ""))
+    out = subprocess.run([str(LDD), str(binary)], capture_output=True, text=True, check=True, env=env).stdout
     deps = set()
     for line in out.splitlines():
         name, _, location = line.strip().partition(" => ")
@@ -119,24 +132,42 @@ def ldd_deps(binary: Path) -> set[str]:
 
 
 def copy_tools(dest: Path) -> None:
-    missing = [f for f in TOOLS + DLLS if not (MSYS2_BIN / f).is_file()]
+    missing = [f for f in TOOLS + DLLS if not tool_source(f).is_file()]
     if missing:
-        sys.exit(f"Missing in {MSYS2_BIN}: {missing}")
+        sys.exit(f"Missing in {MSYS2_BIN} or {third_party.BUILT_DIR}: {missing}")
+    built = third_party.verify_built_files()
+    if built:
+        sys.exit(f"The pinned libimobiledevice 1.4.0 build in {third_party.BUILT_DIR} does not match its recorded "
+                 f"SHA-256 values: {built}. Rebuild it with packaging/build_libimobiledevice.sh and update "
+                 "packaging/third_party.py.")
     if LDD.is_file():
         needed = set()
         for f in TOOLS + DIRECT_DLLS:
-            needed |= ldd_deps(MSYS2_BIN / f)
+            needed |= ldd_deps(tool_source(f))
         unlisted = sorted(needed - set(DLLS))
         if unlisted:
             sys.exit(f"DLL list is incomplete - also needed: {unlisted}")
-        print(f"ldd check: all {len(needed)} MSYS2 dependencies are bundled")
+        unused = sorted(set(DLLS) - needed - set(DIRECT_DLLS))
+        print(f"ldd check: all {len(needed)} MSYS2 dependencies are bundled"
+              + (f" (bundled but not needed by the tools or helpers: {unused})" if unused else ""))
     else:
         print("WARNING: ldd not found - dependency list not re-verified")
     dest.mkdir(parents=True, exist_ok=True)
     for f in TOOLS + DLLS:
-        shutil.copy2(MSYS2_BIN / f, dest / f)
-    print(f"copied {len(TOOLS)} tools + {len(DLLS)} DLLs to {dest.relative_to(ROOT)}")
+        shutil.copy2(tool_source(f), dest / f)
+    print(f"copied {len(TOOLS)} tools + {len(DLLS)} DLLs to {dest.relative_to(ROOT)} "
+          f"({len(third_party.BUILT_FILES)} built from upstream libimobiledevice 1.4.0, the rest from MSYS2)")
     verify_bundled_tools(dest)
+    verify_no_unneeded_runtime_files(dest)
+
+
+def verify_no_unneeded_runtime_files(dest: Path) -> None:
+    """libimobiledevice 1.4.0 is built against libtatsu/libcurl, but the bundled files must not need them."""
+    present = sorted(p.name for p in dest.iterdir() if re.search(r"(?i)tatsu|curl|nghttp|ngtcp2|libssh2|libpsl",
+                                                                 p.name))
+    if present:
+        sys.exit(f"Unexpected libtatsu/libcurl files in the bundled tools: {present}")
+    print("tool check: no libtatsu or libcurl files are bundled (the tools do not import them)")
 
 
 def sha256_of(path: Path) -> str:
@@ -150,7 +181,8 @@ def verify_bundled_tools(dest: Path) -> None:
     if wrong:
         sys.exit(f"Bundled tool files differ from the versions documented in the licence notices: {wrong}. "
                  "Update packaging/third_party.py (versions, licences, hashes) and the source bundle before building.")
-    print(f"tool check: all {len(TOOLS + DLLS)} bundled files match the documented MSYS2 package versions")
+    print(f"tool check: all {len(TOOLS + DLLS)} bundled files match the documented versions "
+          "(MSYS2 packages, and the pinned libimobiledevice 1.4.0 build)")
 
 
 # ---------------------------------------------------------------------------------------- licences

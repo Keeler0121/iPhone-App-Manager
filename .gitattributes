@@ -6,4 +6,10 @@
 packaging/licenses/* -text
 packaging/third-party-sources/*.zst binary
 packaging/third-party-sources/*.sig binary
+packaging/third-party-sources/*.bz2 binary
 packaging/third-party-sources/README.txt -text
+# Pinned binaries (SHA-256 recorded in packaging/third_party.py) and the shell script that builds them: bash
+# fails on CRLF, so the script is always checked out with LF; the recorded build info is kept byte-for-byte.
+packaging/third-party-binaries/** binary
+packaging/third-party-binaries/**/BUILD-INFO.txt -text
+packaging/build_libimobiledevice.sh text eol=lf

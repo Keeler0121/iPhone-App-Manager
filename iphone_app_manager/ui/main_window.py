@@ -13,13 +13,15 @@ from typing import Callable, Iterable, Optional, Union
 from .. import config
 from ..app_icons import IconFetchResult, fetch_icons
 from ..app_inventory import InventoryResult, fetch_inventory
+from ..connection import ConnectionType, DeviceTarget
 from ..device import DeviceError, DeviceService, ErrorKind, removal_block_reason
 from ..models import AppInfo, AppSize, DeviceInfo
 from ..uninstall import Outcome, UninstallResult, count, run_uninstall_batch, verify_results
-from .dialogs import ConfirmUninstallDialog, ReviewDialog, UninstallProgressDialog
+from .dialogs import ConfirmUninstallDialog, DevicePickerDialog, ReviewDialog, UninstallProgressDialog
 from .icons import IconFactory
 from .theme import Colors, Glyph, apply_theme
-from .widgets import AppList, DetailsCard, IconBadge, Pill, RoundedButton, SearchBox, format_bytes
+from .widgets import (AppList, DetailsCard, IconBadge, Pill, RoundedButton, SearchBox, SegmentedControl,
+                      format_bytes)
 
 _STATUS_FOR_ERROR = {
     ErrorKind.NO_DEVICE: ("disconnected", "Not connected"),
@@ -29,6 +31,10 @@ _STATUS_FOR_ERROR = {
     ErrorKind.TIMEOUT: ("error", "Not responding"),
     ErrorKind.PARSE: ("error", "Read error"),
     ErrorKind.UNKNOWN: ("error", "Error"),
+    ErrorKind.SERVICE_UNAVAILABLE: ("error", "Service unavailable"),
+    ErrorKind.WIFI_SYNC_OFF: ("warning", "Wi-Fi sync off"),
+    ErrorKind.MULTIPLE_DEVICES: ("warning", "Choose an iPhone"),
+    ErrorKind.INSTALL_SERVICE: ("error", "Service unavailable"),
 }
 
 # Connection-status pill appearance (on the slate header).
@@ -49,12 +55,17 @@ _ERROR_GLYPH = {
     ErrorKind.NO_DEVICE: (Glyph.PHONE, False),
     ErrorKind.NOT_TRUSTED: (Glyph.LOCK, True),
     ErrorKind.LOCKED: (Glyph.LOCK, True),
+    ErrorKind.MULTIPLE_DEVICES: (Glyph.PHONE, False),
 }
 
 # Sort modes: key -> (label, column, descending). Apps without a size always sort last.
+# The status modes (reached by clicking the STATUS header) only reorder the two groups: Offloaded then Installed
+# ("ascending") or Installed then Offloaded ("descending"). Names stay A → Z inside each group in both directions.
 SORT_MODES = {
     "name_asc": ("Name A → Z", "name", False),
     "name_desc": ("Name Z → A", "name", True),
+    "status_asc": ("Offloaded first", "status", False),
+    "status_desc": ("Installed first", "status", True),
     "total_desc": ("Largest total", "total", True),
     "total_asc": ("Smallest total", "total", False),
     "app_desc": ("Largest app size", "app", True),
@@ -122,6 +133,9 @@ class MainWindow:
         self.visible_ids: list[str] = []        # bundle IDs currently shown (after search)
         self.sort_mode = "name_asc"
         self.device: Optional[DeviceInfo] = None
+        self.target: Optional[DeviceTarget] = None      # the iPhone + connection the data on screen came from
+        self._loaded_udid: Optional[str] = None
+        self.picker_dialog: Optional[DevicePickerDialog] = None
         self.error: Optional[DeviceError] = None
         self.loading = False
         self._events: "queue.Queue[tuple]" = queue.Queue()
@@ -211,6 +225,9 @@ class MainWindow:
                 return
         self._cancel_icon_fetch()       # stops the helper processes
         self._cancel_inventory()
+        if self.picker_dialog is not None:
+            self.picker_dialog.close()
+            self.picker_dialog = None
         for job in (self._fit_job, self._footnote_job):
             if job is not None:
                 self.root.after_cancel(job)
@@ -237,9 +254,18 @@ class MainWindow:
 
         right = tk.Frame(inner, bg=Colors.SLATE_800)
         right.pack(side="right")
-        self.status_pill = Pill(right, fonts=self.fonts, scale=self.scale, bg=Colors.SLATE_800,
+        status_row = tk.Frame(right, bg=Colors.SLATE_800)
+        status_row.pack(anchor="e")
+        # USB (the default) or Wi-Fi. Locked while the app is loading or removing apps.
+        self.connection_selector = SegmentedControl(
+            status_row, options=[(ConnectionType.USB.label, ConnectionType.USB),
+                                 (ConnectionType.WIFI.label, ConnectionType.WIFI)],
+            value=self.service.connection, command=self._on_connection_selected, fonts=self.fonts,
+            scale=self.scale, bg=Colors.SLATE_800, height=30)
+        self.connection_selector.pack(side="left", padx=(0, self.px(10)))
+        self.status_pill = Pill(status_row, fonts=self.fonts, scale=self.scale, bg=Colors.SLATE_800,
                                 height=30, padx=14)
-        self.status_pill.pack(anchor="e")
+        self.status_pill.pack(side="left")
         self.status_detail = tk.Label(right, font=self.fonts.small, fg=Colors.SLATE_300,
                                       bg=Colors.SLATE_800, bd=0)
         self.status_detail.pack(anchor="e", pady=(self.px(6), 0))
@@ -455,7 +481,7 @@ class MainWindow:
                     ("Free now", format_gb(storage.free_now)),
                     ("Note", "iPhone Settings may show more space available, because it also counts "
                              "space iOS can reclaim by clearing caches. That figure is not available "
-                             "over USB, so the guaranteed free space is shown here.")]
+                             "to this app, so the guaranteed free space is shown here.")]
         x, y = self.root.winfo_pointerxy()
         self._storage_card = DetailsCard(self.root, fonts=self.fonts, scale=self.scale, title="iPhone storage",
                                          rows=rows, x_root=x - self.px(320), y_root=y)
@@ -506,7 +532,10 @@ class MainWindow:
             # Icons are retrieved again after the list reloads; show placeholders meanwhile.
             self.icons.clear_real_icons()
         self.icon_note = ""
-        self._set_status("loading", "Connecting…", "Looking for your iPhone")
+        self._set_status("loading", "Connecting…",
+                         "Looking for your iPhone" if self.service.connection is ConnectionType.USB
+                         else "Looking for your iPhone over Wi-Fi")
+        self._sync_connection_controls()
         self.refresh_button.set_enabled(False)
         self.refresh_button.set_text("Loading…")
         self.progress.place(x=0, y=0, relwidth=1, relheight=1)
@@ -602,17 +631,19 @@ class MainWindow:
         self.icon_received = 0
         self.icon_requested = len(order)
         self.icon_note = f"Loading icons 0 of {len(order)}"
-        threading.Thread(target=self._icon_worker, args=(self._icon_generation, order, cancel),
+        threading.Thread(target=self._icon_worker,
+                         args=(self._icon_generation, order, cancel, self.service.target),
                          name="icon-fetch", daemon=True).start()
         self._update_counts()
         self._ensure_polling()
 
-    def _icon_worker(self, generation: int, bundle_ids: list[str], cancel: threading.Event) -> None:
-        """Runs off the UI thread; the helper process does the device work."""
+    def _icon_worker(self, generation: int, bundle_ids: list[str], cancel: threading.Event,
+                     target: Optional[DeviceTarget] = None) -> None:
+        """Runs off the UI thread; the helper process does the device work (on ``target``)."""
         try:
             result = fetch_icons(bundle_ids, self.icons.tile_size,
                                  on_icon=lambda bid, png: self._events.put(("icon", generation, bid, png)),
-                                 cancel=cancel)
+                                 cancel=cancel, target=target)
         except Exception as exc:  # never let the worker die silently
             result = IconFetchResult(requested=len(bundle_ids), error=f"{type(exc).__name__}: {exc}")
         self._events.put(("icons_done", generation, result))
@@ -655,17 +686,18 @@ class MainWindow:
         self.sizes_state = "loading"
         self.sizes = {}
         self.inventory_note = ""
-        threading.Thread(target=self._inventory_worker, args=(self._inv_generation, cancel),
+        threading.Thread(target=self._inventory_worker, args=(self._inv_generation, cancel, self.service.target),
                          name="inventory", daemon=True).start()
         self._ensure_polling()
 
-    def _inventory_worker(self, generation: int, cancel: threading.Event) -> None:
+    def _inventory_worker(self, generation: int, cancel: threading.Event,
+                          target: Optional[DeviceTarget] = None) -> None:
         try:
             result = fetch_inventory(
                 on_offloaded=lambda apps: self._events.put(("inv_offloaded", generation, apps)),
                 on_sizes=lambda sizes: self._events.put(("inv_sizes", generation, sizes)),
                 on_home_screen=lambda ids: self._events.put(("inv_home", generation, ids)),
-                cancel=cancel)
+                cancel=cancel, target=target)
         except Exception as exc:  # never let the worker die silently
             result = InventoryResult(error=f"{type(exc).__name__}: {exc}")
             result.offloaded_error = result.home_screen_error = result.sizes_error = result.error
@@ -706,7 +738,7 @@ class MainWindow:
     def _on_sizes(self, sizes: dict[str, AppSize]) -> None:
         self.sizes = dict(sizes)
         self.sizes_state = "ready"
-        if SORT_MODES[self.sort_mode][1] != "name":
+        if SORT_MODES[self.sort_mode][1] not in ("name", "status"):      # only size sorts depend on the sizes
             self._render()
         else:
             self.app_list.refresh_sizes()
@@ -789,11 +821,19 @@ class MainWindow:
         self.progress.place_forget()
         self.refresh_button.set_enabled(True)
         self.refresh_button.set_text("Refresh")
+        self._sync_connection_controls()
         self.updated_label.configure(text=f"Last checked {datetime.now():%H:%M:%S}")
 
     def _on_loaded(self, device: DeviceInfo, apps: list[AppInfo]) -> None:
         self._finish_loading()
         self.device, self.error = device, None
+        self.target = self.service.target
+        udid = self.target.udid if self.target else None
+        if udid != self._loaded_udid:
+            # A different iPhone: ticks made for another device must never carry over to this one.
+            self.checked.clear()
+            self._known_offloaded = set()
+            self._loaded_udid = udid
         self.installed_apps = list(apps)
         installed_ids = {a.bundle_id for a in apps}
         # Offloaded apps are re-detected by the inventory helper; keep their selection meanwhile.
@@ -803,7 +843,8 @@ class MainWindow:
         preserve = getattr(self, "_preserve_icons", False)
         if preserve:
             self.icons.prune_real_icons(installed_ids | self._known_offloaded)   # keep icons of remaining apps
-        self._set_status("connected", "Connected", f"{device.name}  ·  iOS {device.ios_version}")
+        self._set_status("connected", "Connected",
+                         f"{device.name}  ·  iOS {device.ios_version}  ·  {self.service.connection.label}")
         self._draw_storage()
         self._render()
         self._start_icon_fetch(only_missing=preserve)
@@ -817,13 +858,59 @@ class MainWindow:
         self.icon_note = ""
         self.inventory_note = ""
         self.device, self.error = None, error
+        self.target = None
         self.apps, self.installed_apps, self.offloaded_apps = [], [], []
         self.sizes, self.sizes_state, self.offloaded_state = {}, "idle", "idle"
         state, label = _STATUS_FOR_ERROR.get(error.kind, ("error", "Error"))
         self._set_status(state, label, error.title)
         self._draw_storage()
         self._render()
+        if error.kind is ErrorKind.MULTIPLE_DEVICES and not self.uninstalling:
+            self.root.after(60, self._open_device_picker)     # the user must choose; nothing is guessed
         self._run_after_refresh(False)
+
+    # ------------------------------------------------------------------ connection and device choice
+    def _sync_connection_controls(self) -> None:
+        """The connection can only be changed when nothing is loading or being removed."""
+        self.connection_selector.set_enabled(not (self.loading or self.uninstalling))
+
+    def _on_connection_selected(self, connection: ConnectionType) -> None:
+        """The user switched between USB and Wi-Fi: forget the old iPhone and look again."""
+        if self.loading or self.uninstalling or connection is self.service.connection:
+            self.connection_selector.set_value(self.service.connection)     # refused: undo the highlight
+            return
+        self.service.set_connection(connection)
+        self._cancel_icon_fetch()
+        self._cancel_inventory()
+        self.device, self.target, self.error = None, None, None
+        self._loaded_udid = None
+        self.checked.clear()
+        self._known_offloaded = set()
+        self.apps, self.installed_apps, self.offloaded_apps = [], [], []
+        self.sizes, self.sizes_state, self.offloaded_state = {}, "idle", "idle"
+        self.icon_note = self.inventory_note = ""
+        self._draw_storage()
+        self.refresh()
+
+    def _open_device_picker(self) -> None:
+        """Ask which iPhone to use (only when the Apple service reports more than one, or the chosen one left)."""
+        error = self.error
+        if error is None or error.kind is not ErrorKind.MULTIPLE_DEVICES or self.picker_dialog is not None:
+            return
+        if self.loading or self.uninstalling:
+            return
+        self.picker_dialog = DevicePickerDialog(
+            self.root, candidates=error.candidates, connection_label=self.service.connection.label,
+            fonts=self.fonts, scale=self.scale, note=error.details,
+            on_choose=self._on_device_chosen, on_cancel=self._on_picker_cancelled)
+
+    def _on_picker_cancelled(self) -> None:
+        self.picker_dialog = None
+
+    def _on_device_chosen(self, udid: str) -> None:
+        self.picker_dialog = None
+        self.service.choose_device(udid)
+        self.refresh()
 
     def _run_after_refresh(self, ok: bool) -> None:
         callback, self._after_refresh = self._after_refresh, None
@@ -837,6 +924,9 @@ class MainWindow:
             name = (app.name.casefold(), app.bundle_id.casefold())
             if column == "name":
                 return name
+            if column == "status":
+                offloaded_first = not descending
+                return (0 if app.offloaded == offloaded_first else 1, name)
             size = self.sizes.get(app.bundle_id)
             if size is None:
                 return (1, 0, name)            # no size: always after apps with sizes
@@ -869,13 +959,20 @@ class MainWindow:
         if self.apps and visible:
             self._hide_overlay()
         elif self.loading and not self.apps:
-            self._show_overlay("Reading apps from your iPhone…",
-                               "Keep your iPhone connected and unlocked. This usually takes a few seconds.",
-                               glyph=Glyph.PHONE)
+            if self.service.connection is ConnectionType.WIFI:
+                self._show_overlay("Reading apps from your iPhone over Wi-Fi…",
+                                   "Keep your iPhone awake, unlocked and on the same Wi-Fi network. This can "
+                                   "take a little longer than USB.", glyph=Glyph.PHONE)
+            else:
+                self._show_overlay("Reading apps from your iPhone…",
+                                   "Keep your iPhone connected and unlocked. This usually takes a few seconds.",
+                                   glyph=Glyph.PHONE)
         elif self.error is not None:
             glyph, accent = _ERROR_GLYPH.get(self.error.kind, (Glyph.WARNING, True))
+            action = (("Choose iPhone…", self._open_device_picker)
+                      if self.error.kind is ErrorKind.MULTIPLE_DEVICES else ("Try again", self.refresh))
             self._show_overlay(self.error.title, self.error.message, self.error.details,
-                               action=("Try again", self.refresh), glyph=glyph, accent=accent)
+                               action=action, glyph=glyph, accent=accent)
         elif not self.apps and self.device is not None:
             self._show_overlay("No apps found",
                                "Your iPhone didn't report any user-installed apps.",
@@ -960,6 +1057,9 @@ class MainWindow:
         _label, current, descending = SORT_MODES[self.sort_mode]
         if column == "name":
             self.set_sort("name_desc" if current == "name" and not descending else "name_asc")
+        elif column == "status":
+            # First click: Offloaded apps first. Every further click reverses the order.
+            self.set_sort("status_desc" if current == "status" and not descending else "status_asc")
         else:
             # First click: largest first. Clicking again flips the order.
             self.set_sort(f"{column}_asc" if current == column and descending else f"{column}_desc")
@@ -1007,13 +1107,22 @@ class MainWindow:
                 reasons[reason] = reasons.get(reason, 0) + 1
         self.confirm_dialog = ConfirmUninstallDialog(
             self.root, apps=removable, skipped=len(selected) - len(removable), skip_reasons=reasons,
-            device_name=self.device.name, icons=self.icons, fonts=self.fonts, scale=self.scale,
+            device_name=(self.device.name if self.service.connection is ConnectionType.USB
+                         else f"{self.device.name} (over Wi-Fi)"),
+            icons=self.icons, fonts=self.fonts, scale=self.scale,
             on_confirm=self._start_uninstall, size_for=self.size_for)
         return self.confirm_dialog
 
     def _start_uninstall(self, confirmed: list[AppInfo]) -> None:
         """Called only by the confirmation dialog's Uninstall button."""
         if self.loading or self.uninstalling:
+            return
+        # The apps were confirmed for the iPhone and connection shown on screen: refuse if the
+        # service is now pointed at anything else.
+        shown, now = self.target, self.service.target
+        if (shown is None) != (now is None) or (
+                shown is not None and now is not None
+                and (shown.udid, shown.connection) != (now.udid, now.connection)):
             return
         # Re-validate against the current list: still present, still selected, still removable.
         current = {a.bundle_id: a for a in self.apps}
@@ -1023,6 +1132,7 @@ class MainWindow:
         if not apps:
             return
         self.uninstalling = True
+        self._sync_connection_controls()
         self._cancel_icon_fetch()            # one device operation at a time; real icons are kept
         self._cancel_inventory()
         self.icon_note = ""
@@ -1080,6 +1190,7 @@ class MainWindow:
         self.checked -= removed_ids          # failed / not attempted apps stay selected
         self.last_uninstall_results = results
         self.uninstalling = False
+        self._sync_connection_controls()
         self.refresh_button.set_enabled(not self.loading)
         if self.progress_dialog is not None:
             self.progress_dialog.finish(results, verified=verified, removed=count(results, Outcome.REMOVED),

@@ -185,8 +185,11 @@ class InventoryHelperSafetyTests(unittest.TestCase):
         code = re.sub(r'"""[\s\S]*?"""', "", src)
         code = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
         device_calls = set(re.findall(r"\bimd\.(\w+)", code))
-        self.assertEqual(device_calls, {"idevice_new", "idevice_free", "instproxy_client_start_service",
-                                        "instproxy_browse", "instproxy_client_free",
+        # idevice_new_with_options only CONNECTS (to a named iPhone over USB or Wi-Fi); like idevice_new it
+        # changes nothing on the device.
+        self.assertEqual(device_calls, {"idevice_new", "idevice_new_with_options", "idevice_free",
+                                        "instproxy_client_start_service", "instproxy_browse",
+                                        "instproxy_client_free",
                                         "sbservices_client_start_service", "sbservices_get_icon_state",
                                         "sbservices_client_free"})
         for forbidden in ("uninstall", "instproxy_install", "upgrade", "archive", "restore", "set_icon_state",
@@ -568,6 +571,180 @@ class Stage4UiTests(unittest.TestCase):
         self.assertEqual(self.w.sort_mode, "total_desc")
         L._on_header_click(type("E", (), {"x": cols.total_x + 5})())
         self.assertEqual(self.w.sort_mode, "total_asc")
+
+    # ---------------------------------------------------------- STATUS header sort
+    # Fixture: installed Alpha, Bravo, Charlie, Delta, Echo, ScoreBoard; offloaded Fern, Pages, Tiger, Willow.
+    OFFLOADED_AZ = ["com.fern.fern", "com.apple.Pages", "tv.tiger", "com.willow.phone"]
+    INSTALLED_AZ = ["com.alpha.app", "com.bravo.app", "com.charlie.app", "com.delta.app", "com.echo.app",
+                    "ScoreBoard"]
+
+    def click_status_header(self):
+        L = self.w.app_list
+        L._on_header_click(type("E", (), {"x": L._cols.status_x + 5})())
+
+    def expected_status_order(self, offloaded_first: bool, query: str = "") -> list[str]:
+        """The rule, computed independently from the window's apps: group by status, names A-Z inside each group."""
+        apps = [a for a in self.w.apps if not query or query in a.name.casefold() or query in a.bundle_id.casefold()]
+        key = lambda a: (a.name.casefold(), a.bundle_id.casefold())          # noqa: E731
+        off = sorted((a for a in apps if a.offloaded), key=key)
+        inst = sorted((a for a in apps if not a.offloaded), key=key)
+        return [a.bundle_id for a in (off + inst if offloaded_first else inst + off)]
+
+    def test_status_header_first_click_puts_offloaded_first_then_installed(self):
+        self.assertEqual(self.w.sort_mode, "name_asc")
+        self.click_status_header()
+        self.assertEqual(self.w.sort_mode, "status_asc")
+        self.assertEqual(self.ids(), self.OFFLOADED_AZ + self.INSTALLED_AZ)            # explicit, not recomputed
+        self.assertEqual(self.ids(), self.expected_status_order(True))
+
+    def test_status_header_clicks_keep_alternating_and_names_stay_a_to_z_in_each_group(self):
+        expected_modes = ["status_asc", "status_desc", "status_asc", "status_desc", "status_asc"]
+        for n, mode in enumerate(expected_modes, start=1):
+            self.click_status_header()
+            self.assertEqual(self.w.sort_mode, mode, f"click {n}")
+            offloaded_first = mode == "status_asc"
+            self.assertEqual(self.ids(), self.expected_status_order(offloaded_first), f"click {n}")
+        self.click_status_header()                                                      # 6th click: Installed first
+        self.assertEqual(self.ids(), self.INSTALLED_AZ + self.OFFLOADED_AZ)             # names still A-Z, not reversed
+
+    def test_status_sort_starts_with_offloaded_from_any_other_sort(self):
+        w, L = self.w, self.w.app_list
+        w.set_sort("total_desc")
+        self.click_status_header()
+        self.assertEqual(w.sort_mode, "status_asc")
+        self.click_status_header()
+        self.assertEqual(w.sort_mode, "status_desc")
+        w._on_header_sort("name")                                                       # leave the status sort...
+        self.assertEqual(w.sort_mode, "name_asc")
+        self.click_status_header()                                                      # ...and come back: Offloaded first
+        self.assertEqual(w.sort_mode, "status_asc")
+        w.set_sort("name_desc")
+        self.click_status_header()
+        self.assertEqual(w.sort_mode, "status_asc")
+        self.assertEqual((L.sort_column, L.sort_descending), ("status", False))
+
+    def header_texts(self):
+        c = self.w.app_list.header
+        return [(c.itemcget(i, "text"), c.coords(i)) for i in c.find_all() if c.type(i) == "text"]
+
+    def test_status_header_shows_a_sort_indicator_that_follows_the_direction(self):
+        from iphone_app_manager.ui.theme import Glyph
+        up, down = {Glyph.CHEVRON_UP, "▲"}, {Glyph.CHEVRON_DOWN, "▼"}
+        c = self.w.app_list.header
+        arrows_of = lambda texts, kinds: [t for t in texts if t[0] in kinds]            # noqa: E731
+        self.assertEqual(len(arrows_of(self.header_texts(), up | down)), 1)             # name sort: one arrow, on APP NAME
+        self.click_status_header()                                                      # Offloaded first -> up arrow
+        texts = self.header_texts()
+        label = next(t for t in texts if t[0] == "STATUS")
+        self.assertEqual(len(arrows_of(texts, up | down)), 1)                           # exactly one, and it moved
+        arrow = arrows_of(texts, up)[0]
+        self.assertGreater(arrow[1][0], label[1][0])                                    # right of the STATUS label...
+        self.assertLess(arrow[1][0] - label[1][0], self.w.app_list.p(92))               # ...and inside the column
+        name_label = next(t for t in texts if t[0] == "APP NAME")
+        self.assertLess(arrow[1][0], self.w.app_list._cols.version_x)
+        self.assertNotEqual(arrow[1][0], name_label[1][0])
+        self.click_status_header()                                                      # Installed first -> down arrow
+        texts = self.header_texts()
+        self.assertEqual(len(arrows_of(texts, up | down)), 1)
+        self.assertEqual(len(arrows_of(texts, down)), 1)
+        # the active heading is drawn darker than an inactive one
+        status_id = next(i for i in c.find_all() if c.type(i) == "text" and c.itemcget(i, "text") == "STATUS")
+        version_id = next(i for i in c.find_all() if c.type(i) == "text" and c.itemcget(i, "text") == "VERSION")
+        from iphone_app_manager.ui.theme import Colors
+        self.assertEqual(c.itemcget(status_id, "fill"), Colors.SLATE_700)
+        self.assertEqual(c.itemcget(version_id, "fill"), Colors.SLATE_500)
+
+    def test_status_header_is_clickable_only_over_the_status_column(self):
+        L = self.w.app_list
+        cols = L._cols
+        self.assertEqual(L._header_column_at(int(cols.status_x) + 3), "status")
+        self.assertEqual(L._header_column_at(int(cols.version_x) - 3), "status")
+        self.assertIsNone(L._header_column_at(int(cols.version_x) + 3))                 # VERSION is not sortable
+        self.assertEqual(L._header_column_at(int(cols.name_x) + 3), "name")
+        self.assertEqual(L._header_column_at(int(cols.app_x) + 3), "app")
+
+    def test_status_sort_preserves_selection_and_highlight(self):
+        w, L = self.w, self.w.app_list
+        w.checked = {"com.alpha.app", "tv.tiger", "com.delta.app"}
+        L.highlight = {"com.bravo.app", "com.fern.fern"}
+        w._render()
+        for _ in range(3):
+            self.click_status_header()
+            self.assertEqual(w.checked, {"com.alpha.app", "tv.tiger", "com.delta.app"})
+            self.assertEqual(L.highlight, {"com.bravo.app", "com.fern.fern"})
+            self.assertTrue(all(L._is_checked(bid) for bid in w.checked))
+            self.assertEqual({a.bundle_id for a in w.selected_apps()}, w.checked)
+            self.assertEqual(L.selection(), [b for b in self.ids() if b in L.highlight])
+        # a tick made while sorted by status survives the next re-sort
+        w._toggle(["com.echo.app"])                                                     # tick a row the way a click does
+        self.assertIn("com.echo.app", w.checked)
+        self.click_status_header()
+        self.assertIn("com.echo.app", w.checked)
+        self.assertEqual({a.bundle_id for a in w.selected_apps()}, w.checked)
+
+    def test_status_sort_works_with_search_and_clearing_it(self):
+        w = self.w
+        self.click_status_header()
+        w.search_var.set("r")                                                           # Bravo/Charlie/ScoreBoard + Fern/Tiger
+        self.assertEqual(self.ids(), self.expected_status_order(True, "r"))
+        offloaded_hits = [b for b in self.ids() if b in self.OFFLOADED_AZ]
+        installed_hits = [b for b in self.ids() if b in self.INSTALLED_AZ]
+        self.assertTrue(offloaded_hits and installed_hits)                              # the search spans both groups
+        self.assertEqual(offloaded_hits, ["com.fern.fern", "tv.tiger"])                 # explicit expectations
+        self.assertEqual(installed_hits, ["com.bravo.app", "com.charlie.app", "ScoreBoard"])
+        self.assertEqual(self.ids(), offloaded_hits + installed_hits)
+        self.click_status_header()                                                      # reverse while searching
+        self.assertEqual(self.ids(), self.expected_status_order(False, "r"))
+        self.assertEqual(self.ids(), installed_hits + offloaded_hits)
+        w.search_var.set("zzz-no-match")
+        self.assertEqual(self.ids(), [])
+        w.search_var.set("")
+        self.assertEqual(self.ids(), self.INSTALLED_AZ + self.OFFLOADED_AZ)             # still Installed first
+        w.search_var.set("TIGER")                                                       # case-insensitive as before
+        self.assertEqual(self.ids(), ["tv.tiger"])
+
+    def test_status_sort_survives_a_refresh_when_offloaded_apps_arrive_late(self):
+        w = self.w
+        self.click_status_header()
+        w.refresh()                                                                     # installed list first, offloaded after
+        self.settle()
+        self.assertEqual(w.sort_mode, "status_asc")
+        self.assertEqual(self.ids(), self.OFFLOADED_AZ + self.INSTALLED_AZ)
+        self.click_status_header()
+        w.refresh()
+        self.settle()
+        self.assertEqual(self.ids(), self.INSTALLED_AZ + self.OFFLOADED_AZ)
+
+    def test_sizes_arriving_do_not_disturb_a_status_sorted_list(self):
+        w, L = self.w, self.w.app_list
+        self.click_status_header()
+        before = self.ids()
+        L.highlight = {"com.bravo.app"}
+        L._anchor = L._cursor = 2
+        w._on_sizes(dict(self.inv.sizes))                       # a size sort would re-render; a status sort must not
+        self.assertEqual(self.ids(), before)
+        self.assertEqual((L._anchor, L._cursor), (2, 2))
+        self.assertEqual(L.highlight, {"com.bravo.app"})
+
+    def test_other_sorts_are_unchanged_by_the_status_sort(self):
+        w = self.w
+        w.set_sort("total_desc")
+        self.assertEqual(self.ids()[:3], ["com.charlie.app", "com.bravo.app", "com.alpha.app"])
+        w.set_sort("name_desc")
+        self.assertEqual(self.ids()[0], "com.willow.phone")
+        self.assertEqual(self.ids()[-1], "com.alpha.app")
+        w.set_sort("name_asc")
+        self.assertEqual(self.ids()[:3], ["com.alpha.app", "com.bravo.app", "com.charlie.app"])
+        self.assertEqual(w.sort_button._text, "Name A → Z")
+
+    def test_status_modes_have_labels_and_the_sort_button_shows_the_current_one(self):
+        from iphone_app_manager.ui.main_window import SORT_MODES
+        self.assertEqual(SORT_MODES["status_asc"], ("Offloaded first", "status", False))
+        self.assertEqual(SORT_MODES["status_desc"], ("Installed first", "status", True))
+        self.click_status_header()
+        self.assertEqual(self.w.sort_button._text, "Offloaded first")
+        self.click_status_header()
+        self.assertEqual(self.w.sort_button._text, "Installed first")
 
     def test_toolbar_controls_stay_visible_at_minimum_width(self):
         w = self.w
